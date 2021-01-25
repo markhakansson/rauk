@@ -1,0 +1,13 @@
+[package]
+name = "rauk"
+version = "0.0.0"
+authors = ["Mark Hakansson <mark.hakansson@live.se>"]
+edition = "2018"
+
+[dependencies]
+probe-rs = { version = "0.10.0", git = "https://github.com/probe-rs/probe-rs" }
+gdb-server = { version = "0.10.0", git = "https://github.com/probe-rs/probe-rs"  }
+probe-rs-rtt = { version = "0.10.0", git = "https://github.com/probe-rs/probe-rs-rtt" }
+
+structopt = "0.3.21"
+
