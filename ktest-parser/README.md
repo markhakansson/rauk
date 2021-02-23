@@ -18,38 +18,38 @@ by a version of the file format.
 | 0..5 | HDR     | File format (default: KTEST)| 4 bytes |
 | 5..8 | VERSION | File format version         | 4 bytes |
 
-## Arguments
+### Arguments
 The arguments section describes the number of arguments and then a repeated section of
 arguments where each argument is first described by a size and then its content of size length.
-### Information
+#### Information
 | BYTE | NAME   | DESCRIPTION                 | LENGTH  |
 |------|--------|-----------------------------|---------|
 | 0..4 | NUMARGS| Number of arguments         | 4 bytes |
 
-### Argument
+#### Argument
 This is repeated for (NUMARGS) times.
 | BYTE      | NAME   | DESCRIPTION      | LENGTH       |
 |-----------|--------|------------------|--------------|
 | 0..4      | SIZE   | Size of argument | 4 bytes      |
 | 4..(SIZE) | ARG    | An argument      | (SIZE) bytes |        
 
-## Symbolic arguments
+### Symbolic arguments
 Describes symbolic arguments.
 | BYTE | NAME    | DESCRIPTION | LENGTH  |
 |------|---------|-------------|---------|
 | 0..4 | ARGVS   | none        | 4 bytes |
 | 4..8 | ARGVLEN | none        | 4 bytes |
 
-## Objects
+### Objects
 Like the arguments section, the first item is the number of objects. Then followed by
 a repeated section of objects where each object is described by a size and then its content
 of size length.
-### Information
+#### Information
 | BYTE | NAME      | DESCRIPTION       | LENGTH  |
 |------|-----------|-------------------|---------|
 | 0..4 | NUMOBJECTS| Number of objects | 4 bytes |
 
-### Object
+#### Object
 This is repeated for (NUMOBJECTS) times.
 | BYTE      | NAME   | DESCRIPTION    | LENGTH       |
 |-----------|--------|----------------|--------------|
