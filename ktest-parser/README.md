@@ -28,10 +28,10 @@ arguments where each argument is first described by a size and then its content 
 
 #### Argument
 This is repeated for (NUMARGS) times.
-| BYTE      | NAME   | DESCRIPTION      | LENGTH       |
-|-----------|--------|------------------|--------------|
-| 0..4      | SIZE   | Size of argument | 4 bytes      |
-| 4..(SIZE) | ARG    | An argument      | (SIZE) bytes |        
+| BYTE        | NAME   | DESCRIPTION      | LENGTH       |
+|-------------|--------|------------------|--------------|
+| 0..4        | SIZE   | Size of argument | 4 bytes      |
+| 4..(4+SIZE) | ARG    | An argument      | (SIZE) bytes |        
 
 ### Symbolic arguments
 Describes symbolic arguments.
@@ -51,7 +51,7 @@ of size length.
 
 #### Object
 This is repeated for (NUMOBJECTS) times.
-| BYTE      | NAME   | DESCRIPTION    | LENGTH       |
-|-----------|--------|----------------|--------------|
-| 0..4      | SIZE   | Size of object | 4 bytes      |
-| 4..(SIZE) | OBJECT | An object      | (SIZE) bytes |        
+| BYTE        | NAME   | DESCRIPTION    | LENGTH       |
+|-------------|--------|----------------|--------------|
+| 0..4        | SIZE   | Size of object | 4 bytes      |
+| 4..(4+SIZE) | OBJECT | An object      | (SIZE) bytes |        
