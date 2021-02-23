@@ -1,0 +1,9 @@
+[package]
+name = "ktest-parser"
+version = "0.1.0"
+authors = ["Mark Hakansson <mark.hakansson@live.se>"]
+edition = "2018"
+
+[dependencies]
+nom = "6.1.2"
+anyhow = "1.0.38"
