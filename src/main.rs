@@ -1,14 +1,14 @@
+mod analysis;
 mod cli;
+mod utils;
 
 use probe_rs::{
     flashing::{download_file, Format},
-    Core, MemoryInterface, Probe, Session,
+    Probe,
 };
 use probe_rs_rtt::Rtt;
 use std::str;
 use std::sync::{Arc, Mutex};
-
-const CYCCNT: u32 = 0xe000_1004;
 
 fn probe_wcet(opts: cli::CliOptions) {
     // Get a list of all available debug probes.
@@ -49,7 +49,7 @@ fn probe_wcet(opts: cli::CliOptions) {
     }
 
     if opts.wcet {
-        analysis(&session);
+        analysis::analysis(&session);
     } else {
         println!("Starting program");
         let mut session = session.lock().unwrap();
@@ -69,54 +69,6 @@ fn probe_wcet(opts: cli::CliOptions) {
         let rtt = Rtt::attach(session.clone()).unwrap();
         rtt_print(rtt);
     }
-}
-
-fn analysis(session: &Mutex<Session>) {
-    let mut buff = [0u32; 1];
-
-    let mut session = session.lock().unwrap();
-    let mut core = session.core(0).unwrap();
-
-    core.run().unwrap();
-    core.wait_for_core_halted(std::time::Duration::from_secs(5))
-        .unwrap();
-
-    core.read_32(CYCCNT, &mut buff).unwrap();
-    println!("cyccnt {:?}", buff);
-    run_from_breakpoint(&mut core);
-    core.wait_for_core_halted(std::time::Duration::from_secs(5))
-        .unwrap();
-
-    core.read_32(CYCCNT, &mut buff).unwrap();
-    println!("cyccnt {:?}", buff);
-    run_from_breakpoint(&mut core);
-    core.wait_for_core_halted(std::time::Duration::from_secs(5))
-        .unwrap();
-
-    core.read_32(CYCCNT, &mut buff).unwrap();
-    println!("cyccnt {:?}", buff);
-    run_from_breakpoint(&mut core);
-    core.wait_for_core_halted(std::time::Duration::from_secs(5))
-        .unwrap();
-}
-
-fn step_from_breakpoint(core: &mut Core) {
-    let mut smbf = [0u8; 2];
-    let pc = core.registers().program_counter();
-    let pc_val = core.read_core_reg(pc).unwrap();
-    let step_pc = pc_val + 0x2;
-    
-    core.read_8(pc_val, &mut smbf).unwrap();
-    println!("bkpt instr: {:?}", &mut smbf);
-    println!("pc {:#010x}", pc_val);
-
-    core.write_core_reg(pc.into(), step_pc).unwrap();
-    core.step().unwrap();
-}
-
-fn run_from_breakpoint(core: &mut Core) {
-    step_from_breakpoint(core);
-    core.run().unwrap();
 }
 
 fn rtt_print(mut rtt: Rtt) {
