@@ -1,12 +1,12 @@
 use crate::cli;
 use anyhow;
-use cargo_metadata as cm;
+use cargo_metadata::Message;
 use ktest_parser;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 pub fn generate_klee_tests(tg: cli::TestGeneration) {
     let mut cargo = Command::new("cargo");
-    cargo.arg("rustc");
+    cargo.arg("rustc").arg("-v");
 
     if tg.bin.is_empty() {
         cargo.args(&["--bin", tg.bin.as_str()]);
@@ -26,8 +26,7 @@ pub fn generate_klee_tests(tg: cli::TestGeneration) {
     cargo
         .args(&["--features", "klee-analysis"])
         .args(&["--manifest-path", path.to_str().unwrap()])
-        // enable shell coloring of result
-        .arg("--color=always")
+        .arg("--message-format=json")
         .arg("--")
         // ignore linking
         .args(&["-C", "linker=true"])
@@ -37,9 +36,32 @@ pub fn generate_klee_tests(tg: cli::TestGeneration) {
         .arg("--emit=llvm-ir")
         // force panic=abort in all crates, override .cargo settings
         .env("RUSTFLAGS", "-C panic=abort");
+    // output the LLVM-IR (.ll file) for KLEE analysis
 
-    let status = cargo.status().unwrap();
-    if !status.success() {
-        println!("{:?}", status.code().unwrap());
+    let mut command = cargo.stdout(Stdio::piped()).spawn().unwrap();
+    let reader = std::io::BufReader::new(command.stdout.take().unwrap());
+    for message in cargo_metadata::Message::parse_stream(reader) {
+        match message.unwrap() {
+            Message::CompilerMessage(msg) => {
+                println!("{:?}", msg);
+            }
+            Message::CompilerArtifact(artifact) => {
+                println!("{:?}", artifact);
+            }
+            Message::BuildScriptExecuted(script) => {
+                println!("{:?}", script);
+            }
+            Message::BuildFinished(finished) => {
+                println!("{:?}", finished);
+            }
+            _ => (), // Unknown message
+        }
     }
+
+    let output = command.wait().expect("Couldn't get cargo's exit status");
+    // let status = cargo.status().unwrap();
+
+    // if !status.success() {
+    //     println!("{:?}", status.code().unwrap());
+    // }
 }
