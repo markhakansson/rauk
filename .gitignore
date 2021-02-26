@@ -1,4 +1,4 @@
 /target
 /bin
-**/target
+/ktest-parser/target
 /ktest-parser/Cargo.lock
