@@ -13,3 +13,4 @@ ktest-parser = { path = "./ktest-parser" }
 structopt = "0.3.21"
 anyhow = "1.0.38"
 cargo_metadata = "0.12.3"
+glob = "0.3.0"
