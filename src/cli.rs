@@ -53,8 +53,21 @@ pub struct Flash {
 /// Runs the WCET analysis on the flashed binary
 #[derive(Debug, StructOpt)]
 pub struct Analyze {
-    #[structopt(short, long)]
+    /// Path to the RTIC project. Defaults to the current directory.
+    #[structopt(short, long, parse(from_os_str))]
     pub path: Option<PathBuf>,
+    /// Generate test for a binary.
+    #[structopt(short, long, required_unless = "example", conflicts_with = "example")]
+    pub bin: Option<String>,
+    /// Generate test for an example.
+    #[structopt(short, long, required_unless = "bin", conflicts_with = "bin")]
+    pub example: Option<String>,
+    /// Generate tests in release mode.
+    #[structopt(short, long)]
+    pub release: bool,
+    // The target to build for.
+    #[structopt(short, long)]
+    pub target: Option<String>,
 }
 
 pub fn get_cli_opts() -> CliOptions {

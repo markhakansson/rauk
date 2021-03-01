@@ -1,6 +1,7 @@
 mod cli;
 mod klee;
 //mod target;
+mod replay;
 mod utils;
 
 use cli::Command;
@@ -16,6 +17,9 @@ fn main() {
             for test in &ktests {
                 println!("{:#?}", test);
             }
+        }
+        Command::Analyze(a) => {
+            replay::analyze(a);
         }
         _ => (),
     }

@@ -27,7 +27,7 @@ pub fn generate_klee_tests(tg: TestGeneration) -> Vec<KTest> {
     let mut klee = Command::new("klee");
     klee.arg("--emit-all-errors").arg(ll.unwrap());
     klee.stdout(Stdio::null())
-        .output()
+        .status()
         .expect("Could not run KLEE");
 
     // Fetch ktests
@@ -40,7 +40,7 @@ fn build_project(
     cargo_path: &mut PathBuf,
     target_dir: &mut PathBuf,
     project_name: &mut String,
-) -> Result<Output, std::io::Error> {
+) -> Result<ExitStatus, std::io::Error> {
     let mut cargo = Command::new("cargo");
     cargo.arg("rustc").arg("-v");
 
@@ -75,7 +75,7 @@ fn build_project(
         // force panic=abort in all crates, override .cargo settings
         .env("RUSTFLAGS", "-C panic=abort");
 
-    cargo.output()
+    cargo.status()
 }
 
 fn fetch_latest_ll_file(target_dir: &mut PathBuf, project_name: &mut String) -> Option<PathBuf> {
