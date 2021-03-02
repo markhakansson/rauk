@@ -1,5 +1,8 @@
 use gimli::{
-    read::{AttributeValue, Dwarf, EndianSlice, EvaluationResult, Location, Unit},
+    read::{
+        AttributeValue, DebuggingInformationEntry, Dwarf, EndianSlice, EvaluationResult, Location,
+        Unit,
+    },
     LittleEndian, RunTimeEndian, UnitHeader,
 };
 use object::{Object, ObjectSection};
@@ -58,65 +61,7 @@ pub fn get_replay_addresses(
     while let Some(header) = iter.next()? {
         let unit = dwarf.unit(header)?;
 
-        // Iterate over the Debugging Information Entries (DIEs) in the unit.
-        let mut entries = unit.entries();
-        while let Some((_, entry)) = entries.next_dfs()? {
-            // Iterate over the attributes in the DIE.
-            if entry.tag() == gimli::DW_TAG_variable {
-                //println!("<{}><{:x}> {}", depth, entry.offset().0, entry.tag());
-                let mut attrs = entry.attrs();
-                let mut name: String = String::new();
-                let mut location: Option<u64> = None;
-                while let Some(attr) = attrs.next()? {
-                    if attr.name() == gimli::constants::DW_AT_name {
-                        match attr.value() {
-                            AttributeValue::DebugStrRef(offset) => {
-                                name = dwarf
-                                    .string(offset)
-                                    .unwrap()
-                                    .to_string()
-                                    .unwrap()
-                                    .to_string();
-                            }
-                            _ => (),
-                        }
-                    } else if attr.name() == gimli::constants::DW_AT_location {
-                        match attr.value() {
-                            AttributeValue::Exprloc(e) => {
-                                let mut eval = e.evaluation(header.encoding());
-                                let mut result = eval.evaluate().unwrap();
-                                match result {
-                                    EvaluationResult::RequiresRelocatedAddress(u) => {
-                                        result = eval.resume_with_relocated_address(u).unwrap();
-                                    }
-                                    _ => (),
-                                }
-
-                                if result == EvaluationResult::Complete {
-                                    let mut eval = eval.result();
-                                    let loc = eval.first().unwrap().location;
-                                    match loc {
-                                        Location::Address { address: a } => location = Some(a),
-                                        _ => (),
-                                    }
-                                }
-                            }
-                            _ => (),
-                        }
-                    // Ignore external objects
-                    } else if attr.name() == gimli::constants::DW_AT_external {
-                        break;
-                    }
-                }
-                if location.is_some() {
-                    let replay = ReplayObjectAtAddress {
-                        name: name,
-                        address: location,
-                    };
-                    objects.push(replay);
-                }
-            }
-        }
+        objects.append(&mut parse_entries(&dwarf, header, unit).unwrap());
     }
     Ok(objects)
 }
@@ -132,59 +77,71 @@ fn parse_entries(
     while let Some((_, entry)) = entries.next_dfs()? {
         // Iterate over the attributes in the DIE.
         if entry.tag() == gimli::DW_TAG_variable {
-            //println!("<{}><{:x}> {}", depth, entry.offset().0, entry.tag());
-            let mut attrs = entry.attrs();
-            let mut name: String = String::new();
-            let mut location: Option<u64> = None;
-            while let Some(attr) = attrs.next()? {
-                if attr.name() == gimli::constants::DW_AT_name {
-                    match attr.value() {
-                        AttributeValue::DebugStrRef(offset) => {
-                            name = dwarf
-                                .string(offset)
-                                .unwrap()
-                                .to_string()
-                                .unwrap()
-                                .to_string();
-                        }
-                        _ => (),
-                    }
-                } else if attr.name() == gimli::constants::DW_AT_location {
-                    match attr.value() {
-                        AttributeValue::Exprloc(e) => {
-                            let mut eval = e.evaluation(header.encoding());
-                            let mut result = eval.evaluate().unwrap();
-                            match result {
-                                EvaluationResult::RequiresRelocatedAddress(u) => {
-                                    result = eval.resume_with_relocated_address(u).unwrap();
-                                }
-                                _ => (),
-                            }
-
-                            if result == EvaluationResult::Complete {
-                                let mut eval = eval.result();
-                                let loc = eval.first().unwrap().location;
-                                match loc {
-                                    Location::Address { address: a } => location = Some(a),
-                                    _ => (),
-                                }
-                            }
-                        }
-                        _ => (),
-                    }
-                // Ignore external objects
-                } else if attr.name() == gimli::constants::DW_AT_external {
-                    break;
-                }
-            }
-            if location.is_some() {
-                let replay = ReplayObjectAtAddress {
-                    name: name,
-                    address: location,
-                };
-                objects.push(replay);
+            match parse_variable(&entry, &dwarf, &header)? {
+                Some(variable) => objects.push(variable),
+                None => (),
             }
         }
     }
     Ok(objects)
+}
+
+fn parse_variable(
+    entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
+    dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
+    header: &UnitHeader<EndianSlice<RunTimeEndian>>,
+) -> Result<Option<ReplayObjectAtAddress>, gimli::Error> {
+    let mut attrs = entry.attrs();
+    let mut name: String = String::new();
+    let mut location: Option<u64> = None;
+    while let Some(attr) = attrs.next()? {
+        if attr.name() == gimli::constants::DW_AT_name {
+            match attr.value() {
+                AttributeValue::DebugStrRef(offset) => {
+                    name = dwarf
+                        .string(offset)
+                        .unwrap()
+                        .to_string()
+                        .unwrap()
+                        .to_string();
+                }
+                _ => (),
+            }
+        } else if attr.name() == gimli::constants::DW_AT_location {
+            match attr.value() {
+                AttributeValue::Exprloc(e) => {
+                    let mut eval = e.evaluation(header.encoding());
+                    let mut result = eval.evaluate().unwrap();
+                    match result {
+                        EvaluationResult::RequiresRelocatedAddress(u) => {
+                            result = eval.resume_with_relocated_address(u).unwrap();
+                        }
+                        _ => (),
+                    }
+
+                    if result == EvaluationResult::Complete {
+                        let mut eval = eval.result();
+                        let loc = eval.first().unwrap().location;
+                        match loc {
+                            Location::Address { address: a } => location = Some(a),
+                            _ => (),
+                        }
+                    }
+                }
+                _ => (),
+            }
+        // Ignore external objects
+        } else if attr.name() == gimli::constants::DW_AT_external {
+            break;
+        }
+    }
+
+    if location.is_some() {
+        let replay = ReplayObjectAtAddress {
+            name: name,
+            address: location,
+        };
+        return Ok(Some(replay));
+    }
+    Ok(None)
 }
