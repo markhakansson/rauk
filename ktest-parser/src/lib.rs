@@ -36,7 +36,7 @@
 //! | BYTE      | NAME   | DESCRIPTION      | LENGTH       |
 //! |-----------|--------|------------------|--------------|
 //! | 0..4      | SIZE   | Size of argument | 4 bytes      |
-//! | 4..(SIZE) | ARG    | An argument      | (SIZE) bytes |        
+//! | 4..(SIZE) | ARG    | An argument      | (SIZE) bytes |
 //!
 //! ## Symbolic arguments
 //! Describes symbolic arguments.
@@ -61,7 +61,7 @@
 //! | BYTE      | NAME   | DESCRIPTION    | LENGTH       |
 //! |-----------|--------|----------------|--------------|
 //! | 0..4      | SIZE   | Size of object | 4 bytes      |
-//! | 4..(SIZE) | OBJECT | An object      | (SIZE) bytes |        
+//! | 4..(SIZE) | OBJECT | An object      | (SIZE) bytes |
 
 extern crate nom;
 
@@ -75,9 +75,10 @@ use nom::{
     sequence::tuple,
     IResult,
 };
+use serde::{Deserialize, Serialize};
 
 /// Contains information about the generated test vector on a symbolic object.
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct KTestObject {
     /// The name given to the symbolic object when calling `klee_make_symbolic`
     pub name: String,
@@ -88,7 +89,7 @@ pub struct KTestObject {
 }
 
 /// A representation of the KTest file format.
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct KTest {
     /// KTest file format version
     pub version: u32,
