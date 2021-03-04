@@ -3,7 +3,7 @@ use gimli::{
         AttributeValue, DebuggingInformationEntry, Dwarf, EndianSlice, EvaluationResult, Location,
         Unit,
     },
-    LittleEndian, RunTimeEndian, UnitHeader,
+    RunTimeEndian, UnitHeader,
 };
 use object::{Object, ObjectSection};
 use std::path::PathBuf;
@@ -61,7 +61,7 @@ pub fn get_replay_addresses(
     while let Some(header) = iter.next()? {
         let unit = dwarf.unit(header)?;
 
-        objects.append(&mut parse_entries(&dwarf, header, unit).unwrap());
+        objects.append(&mut parse_entries(&dwarf, header, unit)?);
     }
     Ok(objects)
 }
@@ -75,7 +75,7 @@ fn parse_entries(
     // Iterate over the Debugging Information Entries (DIEs) in the unit.
     let mut entries = unit.entries();
     while let Some((_, entry)) = entries.next_dfs()? {
-        // Iterate over the attributes in the DIE.
+        // Iterate over the variables in the DIE.
         if entry.tag() == gimli::DW_TAG_variable {
             match parse_variable(&entry, &dwarf, &header)? {
                 Some(variable) => objects.push(variable),
@@ -111,16 +111,16 @@ fn parse_variable(
             match attr.value() {
                 AttributeValue::Exprloc(e) => {
                     let mut eval = e.evaluation(header.encoding());
-                    let mut result = eval.evaluate().unwrap();
+                    let mut result = eval.evaluate()?;
                     match result {
                         EvaluationResult::RequiresRelocatedAddress(u) => {
-                            result = eval.resume_with_relocated_address(u).unwrap();
+                            result = eval.resume_with_relocated_address(u)?;
                         }
                         _ => (),
                     }
 
                     if result == EvaluationResult::Complete {
-                        let mut eval = eval.result();
+                        let eval = eval.result();
                         let loc = eval.first().unwrap().location;
                         match loc {
                             Location::Address { address: a } => location = Some(a),

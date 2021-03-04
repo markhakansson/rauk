@@ -77,6 +77,8 @@ use nom::{
 };
 use serde::{Deserialize, Serialize};
 
+type KTestTuple = (u32, Vec<String>, u32, u32, u32, Vec<KTestObject>);
+
 /// Contains information about the generated test vector on a symbolic object.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct KTestObject {
@@ -106,7 +108,7 @@ pub struct KTest {
 
 /// Parses a .ktest file and returns a KTest. Will return an error if any
 /// parts of the binary is illegal.
-pub fn parse(input: &[u8]) -> Result<KTest> {
+pub fn parse_ktest(input: &[u8]) -> Result<KTest> {
     let (_, (version, args, sym_argvs, sym_argv_len, num_objects, objects)) =
         match parse_ktest_binary(input) {
             Ok(res) => res,
@@ -123,8 +125,6 @@ pub fn parse(input: &[u8]) -> Result<KTest> {
         objects,
     })
 }
-
-type KTestTuple = (u32, Vec<String>, u32, u32, u32, Vec<KTestObject>);
 
 fn parse_ktest_binary(input: &[u8]) -> IResult<&[u8], KTestTuple> {
     let (input, (_magic, version, args)) =

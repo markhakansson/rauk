@@ -1,14 +1,19 @@
-pub mod dwarf;
+pub mod analysis;
 
-use crate::cli::Analyze;
-use gimli::read::{AttributeValue, EvaluationResult, Location};
-use object::{Object, ObjectSection};
+use crate::cli::Flashing;
+
+use anyhow::Result;
+use probe_rs::{
+    flashing::{download_file, Format},
+    Probe,
+};
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
-use std::{borrow, env, fs};
 
-pub fn analyze(a: Analyze) {
-    let project_dir = match a.path.clone() {
+/// Builds the replay harness and flashes it to the target hardware.
+/// Returns the path to the built executable.
+pub fn flash_to_target(opts: Flashing) -> Result<PathBuf> {
+    let project_dir = match opts.path.clone() {
         Some(path) => path,
         None => PathBuf::from("./"),
     };
@@ -16,31 +21,32 @@ pub fn analyze(a: Analyze) {
     let mut cargo_path = project_dir.clone();
     target_dir.push("target/");
     cargo_path.push("Cargo.toml");
-    target_dir.push("thumbv7em-none-eabi/debug/test-harness");
-    println!("{:?}", target_dir);
-    let objects = dwarf::get_replay_addresses(target_dir);
-    println!("{:#x?}", objects.unwrap());
+
+    build_replay_harness(&opts, &mut cargo_path, &mut target_dir)?;
+
+    // Get a list of all available debug probes.
+    let probes = Probe::list_all();
+
+    // Use the first probe found.
+    let probe = probes[0].open()?;
+
+    // Attach to a chip.
+    let mut session = probe.attach(opts.chip)?;
+
+    // Flash the card with binary
+    download_file(&mut session, &target_dir.as_path(), Format::Elf)?;
+
+    // Reset the core and halt
+    {
+        let mut core = session.core(0).unwrap();
+        core.reset_and_halt(std::time::Duration::from_secs(1))?;
+    }
+
+    Ok(target_dir)
 }
 
-// pub fn analyze(a: Analyze) {
-//     let project_dir = match a.path.clone() {
-//         Some(path) => path,
-//         None => PathBuf::from("./"),
-//     };
-//     let mut target_dir = project_dir.clone();
-//     let mut cargo_path = project_dir.clone();
-//     target_dir.push("target/");
-//     cargo_path.push("Cargo.toml");
-//
-//     build_replay_harness(&a, &mut cargo_path, &mut target_dir)
-//         .expect("Could not build the replay harness");
-//
-//     println!("{:?}", target_dir);
-//     dwarf_check(target_dir);
-// }
-
 fn build_replay_harness(
-    a: &Analyze,
+    a: &Flashing,
     cargo_path: &mut PathBuf,
     target_dir: &mut PathBuf,
 ) -> Result<ExitStatus, std::io::Error> {
