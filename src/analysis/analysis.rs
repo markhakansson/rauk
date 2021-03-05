@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 const CYCCNT: u32 = 0xe000_1004;
 
-pub fn analysis(session: &Mutex<Session>) {
+pub fn _analysis(session: &Mutex<Session>) {
     let mut buff = [0u32; 1];
 
     let mut session = session.lock().unwrap();
