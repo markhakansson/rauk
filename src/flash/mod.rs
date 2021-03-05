@@ -1,5 +1,3 @@
-pub mod analysis;
-
 use crate::cli::Flashing;
 
 use anyhow::Result;
