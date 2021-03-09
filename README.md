@@ -3,4 +3,12 @@
 
 ## Getting started
 
+## Limitations
+The following RTIC features are currently supported:
+* Hardware tasks
+* Resources
+    * Integer types
+* LateResources
+    * Integer types
+
 
