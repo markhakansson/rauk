@@ -3,7 +3,6 @@ mod cli;
 mod config;
 mod flash;
 mod generate;
-mod klee;
 mod utils;
 
 use analysis::analyze;
@@ -31,7 +30,7 @@ fn main() {
             println!("{:#?}", path);
         }
         Command::Analyze(a) => {
-            // analysis::analyze(a);
+            analysis::analyze(a).unwrap();
         }
         Command::Flash(f) => {
             let path = flash::flash_to_target(f);
@@ -64,6 +63,7 @@ fn run_all(all: cli::All) {
         path: all.path.clone(),
         dwarf: Some(dwarf_path),
         ktests: Some(klee_path),
+        chip: all.chip.clone(),
     };
-    analyze(analysis);
+    analyze(analysis).unwrap();
 }

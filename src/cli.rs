@@ -72,6 +72,9 @@ pub struct Analysis {
     /// Path to KLEE tests.
     #[structopt(short, long, parse(from_os_str))]
     pub ktests: Option<PathBuf>,
+    // The name of the chip to flash to.
+    #[structopt(short, long)]
+    pub chip: String,
 }
 
 /// Runs all commands in one go.

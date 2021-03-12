@@ -6,22 +6,24 @@ use gimli::{
     RunTimeEndian, UnitHeader,
 };
 use object::{Object, ObjectSection};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{borrow, fs};
 
+// Details about a resource object and its location in RAM
 #[derive(Debug)]
-pub struct ReplayObjectAtAddress {
+struct ObjectLocation {
     /// The name of the object.
     pub name: String,
     /// The address location of the object.
     pub address: Option<u64>,
 }
 
+pub type ObjectLocationMap = HashMap<String, Option<u64>>;
+
 /// Reads the binary's DWARF format and returns a list of replay variables and their memory
 /// location addresses.
-pub fn get_replay_addresses(
-    binary_path: PathBuf,
-) -> Result<Vec<ReplayObjectAtAddress>, gimli::Error> {
+pub fn get_replay_addresses(binary_path: PathBuf) -> Result<ObjectLocationMap, gimli::Error> {
     let file = fs::File::open(&binary_path).unwrap();
     let mmap = unsafe { memmap::Mmap::map(&file).unwrap() };
     let object = object::File::parse(&*mmap).unwrap();
@@ -30,7 +32,7 @@ pub fn get_replay_addresses(
     } else {
         gimli::RunTimeEndian::Big
     };
-    let mut objects: Vec<ReplayObjectAtAddress> = vec![];
+    let mut objects: ObjectLocationMap = HashMap::new();
     // Load a section and return as `Cow<[u8]>`.
     let load_section = |id: gimli::SectionId| -> Result<borrow::Cow<[u8]>, gimli::Error> {
         match object.section_by_name(id.name()) {
@@ -60,8 +62,10 @@ pub fn get_replay_addresses(
     let mut iter = dwarf.units();
     while let Some(header) = iter.next()? {
         let unit = dwarf.unit(header)?;
-
-        objects.append(&mut parse_entries(&dwarf, header, unit)?);
+        let entries = parse_entries(&dwarf, header, unit)?;
+        for entry in entries {
+            objects.insert(entry.name, entry.address);
+        }
     }
     Ok(objects)
 }
@@ -70,8 +74,8 @@ fn parse_entries(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     header: UnitHeader<EndianSlice<RunTimeEndian>>,
     unit: Unit<EndianSlice<RunTimeEndian>>,
-) -> Result<Vec<ReplayObjectAtAddress>, gimli::Error> {
-    let mut objects: Vec<ReplayObjectAtAddress> = vec![];
+) -> Result<Vec<ObjectLocation>, gimli::Error> {
+    let mut objects: Vec<ObjectLocation> = vec![];
     // Iterate over the Debugging Information Entries (DIEs) in the unit.
     let mut entries = unit.entries();
     while let Some((_, entry)) = entries.next_dfs()? {
@@ -90,7 +94,7 @@ fn parse_variable(
     entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     header: &UnitHeader<EndianSlice<RunTimeEndian>>,
-) -> Result<Option<ReplayObjectAtAddress>, gimli::Error> {
+) -> Result<Option<ObjectLocation>, gimli::Error> {
     let mut attrs = entry.attrs();
     let mut name: String = String::new();
     let mut location: Option<u64> = None;
@@ -137,7 +141,7 @@ fn parse_variable(
     }
 
     if location.is_some() {
-        let replay = ReplayObjectAtAddress {
+        let replay = ObjectLocation {
             name: name,
             address: location,
         };
