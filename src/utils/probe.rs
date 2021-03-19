@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use probe_rs::{Core, MemoryInterface};
 
 const CYCCNT: u32 = 0xe000_1004;
@@ -16,6 +16,8 @@ pub fn step_from_breakpoint(core: &mut Core) -> Result<()> {
     Ok(())
 }
 
+/// Wrapper around probe::core.run(). But also continues
+/// if there is a breakpoint at the current program counter.
 pub fn run(core: &mut Core) -> Result<()> {
     if core.core_halted()? {
         if breakpoint_at_pc(core)? {
@@ -26,6 +28,7 @@ pub fn run(core: &mut Core) -> Result<()> {
     Ok(())
 }
 
+/// Checks if there is a breakpoint at the current program counter.
 pub fn breakpoint_at_pc(core: &mut Core) -> Result<bool> {
     let mut instr16 = [0u8; 2];
     let pc = core.registers().program_counter();
@@ -39,17 +42,19 @@ pub fn breakpoint_at_pc(core: &mut Core) -> Result<bool> {
     Ok(check)
 }
 
-pub fn read_breakpoint_value(core: &mut Core) -> Result<Option<u8>> {
+pub fn read_breakpoint_value(core: &mut Core) -> Result<u8> {
     let mut instr16 = [0u8; 2];
     let pc = core.registers().program_counter();
     let pc_val = core.read_core_reg(pc)?;
     core.read_8(pc_val, &mut instr16)?;
 
-    let value = match instr16[1] {
-        0b10111110 => Some(instr16[0]),
-        _ => None,
-    };
-    Ok(value)
+    match instr16[1] {
+        0b10111110 => Ok(instr16[0]),
+        _ => Err(anyhow!(
+            "Not a breakpoint instruction at current PC: {:x?}",
+            pc_val
+        )),
+    }
 }
 
 pub fn read_cycle_counter(core: &mut Core) -> Result<u32> {

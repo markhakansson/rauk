@@ -1,3 +1,4 @@
+use anyhow::Result;
 use gimli::{
     read::{
         AttributeValue, DebuggingInformationEntry, Dwarf, EndianSlice, EvaluationResult, Location,
@@ -23,10 +24,10 @@ pub type ObjectLocationMap = HashMap<String, Option<u64>>;
 
 /// Reads the binary's DWARF format and returns a list of replay variables and their memory
 /// location addresses.
-pub fn get_replay_addresses(binary_path: PathBuf) -> Result<ObjectLocationMap, gimli::Error> {
-    let file = fs::File::open(&binary_path).unwrap();
-    let mmap = unsafe { memmap::Mmap::map(&file).unwrap() };
-    let object = object::File::parse(&*mmap).unwrap();
+pub fn get_replay_addresses(binary_path: &PathBuf) -> Result<ObjectLocationMap> {
+    let file = fs::File::open(&binary_path)?;
+    let mmap = unsafe { memmap::Mmap::map(&file)? };
+    let object = object::File::parse(&*mmap)?;
     let endian = if object.is_little_endian() {
         gimli::RunTimeEndian::Little
     } else {
@@ -74,7 +75,7 @@ fn parse_entries(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     header: UnitHeader<EndianSlice<RunTimeEndian>>,
     unit: Unit<EndianSlice<RunTimeEndian>>,
-) -> Result<Vec<ObjectLocation>, gimli::Error> {
+) -> Result<Vec<ObjectLocation>> {
     let mut objects: Vec<ObjectLocation> = vec![];
     // Iterate over the Debugging Information Entries (DIEs) in the unit.
     let mut entries = unit.entries();
@@ -94,7 +95,7 @@ fn parse_variable(
     entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     header: &UnitHeader<EndianSlice<RunTimeEndian>>,
-) -> Result<Option<ObjectLocation>, gimli::Error> {
+) -> Result<Option<ObjectLocation>> {
     let mut attrs = entry.attrs();
     let mut name: String = String::new();
     let mut location: Option<u64> = None;

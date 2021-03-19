@@ -36,7 +36,7 @@ pub fn flash_to_target(opts: Flashing) -> Result<PathBuf> {
 
     // Reset the core and halt
     {
-        let mut core = session.core(0).unwrap();
+        let mut core = session.core(0)?;
         core.reset_and_halt(std::time::Duration::from_secs(1))?;
     }
 
@@ -45,7 +45,7 @@ pub fn flash_to_target(opts: Flashing) -> Result<PathBuf> {
 
 fn build_replay_harness(
     a: &Flashing,
-    cargo_path: &mut PathBuf,
+    _cargo_path: &mut PathBuf,
     target_dir: &mut PathBuf,
 ) -> Result<ExitStatus, std::io::Error> {
     let mut cargo = Command::new("cargo");
@@ -74,9 +74,9 @@ fn build_replay_harness(
     }
     target_dir.push(name);
 
-    cargo
-        .args(&["--features", "klee-replay"])
-        .args(&["--manifest-path", cargo_path.to_str().unwrap()]);
+    cargo.args(&["--features", "klee-replay"]);
+    // Ignore manifest path for now
+    //.args(&["--manifest-path", cargo_path.to_str().unwrap()]);
 
     cargo.status()
 }

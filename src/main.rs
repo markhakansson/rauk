@@ -61,8 +61,8 @@ fn run_all(all: cli::All) {
     let dwarf_path = flash::flash_to_target(flash).unwrap();
     let analysis = cli::Analysis {
         path: all.path.clone(),
-        dwarf: Some(dwarf_path),
-        ktests: Some(klee_path),
+        dwarf: dwarf_path,
+        ktests: klee_path,
         chip: all.chip.clone(),
     };
     analyze(analysis).unwrap();
