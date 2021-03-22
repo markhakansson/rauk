@@ -9,28 +9,51 @@ use probe_rs::{Core, MemoryInterface, Probe};
 
 const HALT_TIMEOUT_SECONDS: u64 = 5;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum Breakpoint {
     Other(Other),
     Entry(Entry),
     Exit(Exit),
 }
 
-#[derive(Debug, Clone)]
+impl Breakpoint {
+    fn is_entry(&self) -> bool {
+        match self {
+            Breakpoint::Entry(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_exit(&self) -> bool {
+        match self {
+            Breakpoint::Exit(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_other(&self) -> bool {
+        match self {
+            Breakpoint::Other(_) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 enum Entry {
     SoftwareTaskStart = 1,
     HardwareTaskStart = 2,
     ResourceLockStart = 3,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum Exit {
     ResourceLockEnd = 252,
     HardwareTaskEnd = 253,
     SoftwareTaskEnd = 254,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum Other {
     Default = 0,
     Invalid = 100,
@@ -97,6 +120,57 @@ impl Trace {
 }
 
 pub fn analyze(a: Analysis) -> Result<()> {
+    let trace: Vec<(Breakpoint, String, u32)> = vec![
+        (
+            Breakpoint::Entry(Entry::HardwareTaskStart),
+            String::from("task1"),
+            0,
+        ),
+        (
+            Breakpoint::Entry(Entry::ResourceLockStart),
+            String::from("res1"),
+            5,
+        ),
+        (
+            Breakpoint::Entry(Entry::ResourceLockStart),
+            String::from("res2"),
+            10,
+        ),
+        (
+            Breakpoint::Exit(Exit::ResourceLockEnd),
+            String::from("res2"),
+            15,
+        ),
+        (
+            Breakpoint::Exit(Exit::ResourceLockEnd),
+            String::from("res1"),
+            15,
+        ),
+        (
+            Breakpoint::Entry(Entry::ResourceLockStart),
+            String::from("res3"),
+            15,
+        ),
+        (
+            Breakpoint::Exit(Exit::ResourceLockEnd),
+            String::from("res3"),
+            20,
+        ),
+        (
+            Breakpoint::Exit(Exit::HardwareTaskEnd),
+            String::from("task1"),
+            20,
+        ),
+    ];
+
+    println!("TRACE: {:#?}", &trace);
+    let res = wcet_analysis(&trace[..])?;
+    println!("ANALYSIS RESULTS: {:#?}", res);
+
+    Ok(())
+}
+
+pub fn _analyze(a: Analysis) -> Result<()> {
     let ktests = parse_ktest_files(&a.ktests);
     let dwarf = dwarf::get_replay_addresses(&a.dwarf)?;
 
@@ -117,16 +191,8 @@ pub fn analyze(a: Analysis) -> Result<()> {
         run_to_replay_start(&mut core).context("Could not continue to replay start")?;
         write_replay_objects(&mut core, &ktest, &dwarf)
             .with_context(|| format!("Could not replay with KTest: {:?}", &ktest))?;
-
-        let mut stack: Vec<Entry> = Vec::new();
-        let trace = match wcet_analysis(&mut core, &mut stack) {
-            Ok(trace) => trace,
-            Err(e) => {
-                println!("Error when running WCET analysis: {:?}", e);
-                Vec::<Trace>::new()
-            }
-        };
-        println!("{:#?}", trace);
+        let bkpts = read_breakpoints(&mut core)?;
+        println!("{:#?}", bkpts);
     }
 
     Ok(())
@@ -182,7 +248,111 @@ fn write_replay_objects(
     Ok(())
 }
 
-fn wcet_analysis(core: &mut Core, stack: &mut Vec<Entry>) -> Result<Vec<Trace>> {
+/// Read all breakpoints and the cycle counter at their positions
+/// between the ReplayStart breakpoints and return them as a list
+fn read_breakpoints(core: &mut Core) -> Result<Vec<(Breakpoint, String, u32)>> {
+    let mut stack: Vec<(Breakpoint, String, u32)> = Vec::new();
+
+    loop {
+        core_utils::run(core).context("Could not continue from replay start")?;
+        core.wait_for_core_halted(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))?;
+        if !core_utils::breakpoint_at_pc(core)? {
+            return Err(anyhow!(
+                "Core halted, but not due to breakpoint. Can't continue with analysis."
+            ));
+        }
+
+        // Read breakpoint immediate value
+        let imm = Breakpoint::from(core_utils::read_breakpoint_value(core)?);
+        if imm == Breakpoint::Other(Other::ReplayStart) {
+            break;
+        }
+
+        let cyccnt = core_utils::read_cycle_counter(core)?;
+        stack.push((imm, "".to_string(), cyccnt));
+    }
+
+    Ok(stack)
+}
+
+fn wcet_analysis(bkpts: &[(Breakpoint, String, u32)]) -> Result<Vec<Trace>> {
+    let mut temp: Vec<Entry> = Vec::new();
+    let mut bkpt_stack = bkpts.to_vec();
+    bkpt_stack.reverse();
+    let (traces, _) = wcet_rec(&mut bkpt_stack, &mut temp)?;
+    Ok(traces)
+}
+
+fn wcet_rec(
+    bkpts: &mut Vec<(Breakpoint, String, u32)>,
+    stack: &mut Vec<Entry>,
+) -> Result<(Vec<Trace>, (Breakpoint, String, u32))> {
+    let mut traces: Vec<Trace> = Vec::new();
+    let (bkpt, name, cyccnt) = bkpts.pop().unwrap();
+    let mut curr_bkpt = bkpt.clone();
+    let mut curr_name = name.clone();
+    let mut curr_cyccnt = cyccnt.clone();
+
+    println!("@ BKPTS: {:#?}", bkpts);
+
+    match &curr_bkpt.clone() {
+        Breakpoint::Entry(e) => {
+            println!("* ENTRY: {:?}. Name: {:?}", &e, &curr_name);
+            stack.push(e.clone());
+            let name = curr_name.clone();
+            let ttype = TraceType::from(e.clone());
+            let start = curr_cyccnt.clone();
+            let mut inner = Vec::<Trace>::new();
+
+            // Inner loop
+            let mut prev: Breakpoint = curr_bkpt.clone();
+            let mut end;
+            loop {
+                let (mut i, (last, n, e)) = wcet_rec(bkpts, stack).with_context(|| {
+                    format!("Could not proceed with analysis after breakpoint {:?}", &e)
+                })?;
+                inner.append(&mut i);
+                prev = last.clone();
+                end = e;
+
+                // If we get two Exits in a row, the loop should break
+                if last.is_exit() && prev.is_exit() || bkpts.is_empty() {
+                    println!(
+                        "** Inner. BREAK. Last: {:?}. Prev: {:?}. Name: {:?}",
+                        &last, &prev, &name
+                    );
+                    break;
+                } else {
+                    println!("** Inner. CONTINUE. Last: {:?}", &last);
+                }
+            }
+            let trace = Trace::new(name, ttype, start, inner, end);
+            traces.push(trace);
+        }
+        Breakpoint::Exit(exit) => {
+            println!("* EXIT: {:?}. Name: {:?}", &exit, &curr_name);
+            // The stack should not be empty if we're exiting the analysis
+            let entry = stack.pop().unwrap() as u32;
+            let exit = exit.clone() as u32;
+            if entry + exit != 255 {
+                return Err(anyhow!(
+                    "Breakpoint scope not matching! Got entry: {} and exit: {}",
+                    entry,
+                    exit
+                ));
+            }
+        }
+        //Breakpoint::Other(Other::Default) => (),
+        Breakpoint::Other(o) => {
+            println!("* OTHER: {:?}", &o);
+            return Err(anyhow!("Unsupported breakpoint inside analysis: {:?}", o));
+        }
+    }
+
+    Ok((traces, (curr_bkpt, curr_name, curr_cyccnt)))
+}
+
+fn _wcet_analysis_rec(core: &mut Core, stack: &mut Vec<Entry>) -> Result<(Vec<Trace>, Breakpoint)> {
     // 1.
     // Go to next breakpoint
     core_utils::run(core).context("Could not continue from replay start")?;
@@ -199,20 +369,41 @@ fn wcet_analysis(core: &mut Core, stack: &mut Vec<Entry>) -> Result<Vec<Trace>> 
     // Read breakpoint value
     let mut traces: Vec<Trace> = Vec::new();
     let imm = Breakpoint::from(core_utils::read_breakpoint_value(core)?);
-    match imm {
+    let mut current = imm.clone();
+    match imm.clone() {
         Breakpoint::Entry(e) => {
+            println!("* ENTRY: {:?}", &e);
             stack.push(e.clone());
             let name = "".to_string();
             let ttype = TraceType::from(e.clone());
             let start = core_utils::read_cycle_counter(core)?;
-            let inner = wcet_analysis(core, stack).with_context(|| {
-                format!("Could not proceed with analysis after breakpoint {:?}", &e)
-            })?;
+            let mut inner = Vec::<Trace>::new();
+            // Inner loop
+            let mut prev: Breakpoint = imm.clone();
+            loop {
+                let (mut i, last) = _wcet_analysis_rec(core, stack).with_context(|| {
+                    format!("Could not proceed with analysis after breakpoint {:?}", &e)
+                })?;
+                inner.append(&mut i);
+
+                // If we get two Exits in a row, the loop should break
+                // Or if i is empty it means the scope should end.
+                if (last.is_exit() && prev.is_exit()) || i.is_empty() {
+                    println!("** Inner. BREAK. Last: {:?}", &last);
+                    current = last.clone();
+                    break;
+                } else {
+                    println!("** Inner. CONTINUE. Last: {:?}", &last);
+                    current = last.clone();
+                    prev = last;
+                }
+            }
             let end = core_utils::read_cycle_counter(core)?;
             let trace = Trace::new(name, ttype, start, inner, end);
             traces.push(trace);
         }
         Breakpoint::Exit(exit) => {
+            println!("* EXIT: {:?}", &exit);
             // The stack should not be empty if we're exiting the analysis
             let entry = stack.pop().unwrap() as u32;
             let exit = exit as u32;
@@ -226,8 +417,9 @@ fn wcet_analysis(core: &mut Core, stack: &mut Vec<Entry>) -> Result<Vec<Trace>> 
         }
         //Breakpoint::Other(Other::Default) => (),
         Breakpoint::Other(o) => {
+            println!("* OTHER: {:?}", &o);
             return Err(anyhow!("Unsupported breakpoint inside analysis: {:?}", o));
         }
     }
-    Ok(traces)
+    Ok((traces, current))
 }
