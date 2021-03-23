@@ -76,7 +76,7 @@ impl From<u8> for Breakpoint {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TraceType {
     SoftwareTask,
     HardwareTask,
@@ -93,7 +93,7 @@ impl From<Entry> for TraceType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Trace {
     /// The name of the object.
     pub name: String,
@@ -120,57 +120,6 @@ impl Trace {
 }
 
 pub fn analyze(a: Analysis) -> Result<()> {
-    let trace: Vec<(Breakpoint, String, u32)> = vec![
-        (
-            Breakpoint::Entry(Entry::HardwareTaskStart),
-            String::from("task1"),
-            0,
-        ),
-        (
-            Breakpoint::Entry(Entry::ResourceLockStart),
-            String::from("res1"),
-            5,
-        ),
-        (
-            Breakpoint::Entry(Entry::ResourceLockStart),
-            String::from("res2"),
-            10,
-        ),
-        (
-            Breakpoint::Exit(Exit::ResourceLockEnd),
-            String::from("res2"),
-            15,
-        ),
-        (
-            Breakpoint::Exit(Exit::ResourceLockEnd),
-            String::from("res1"),
-            15,
-        ),
-        (
-            Breakpoint::Entry(Entry::ResourceLockStart),
-            String::from("res3"),
-            15,
-        ),
-        (
-            Breakpoint::Exit(Exit::ResourceLockEnd),
-            String::from("res3"),
-            20,
-        ),
-        (
-            Breakpoint::Exit(Exit::HardwareTaskEnd),
-            String::from("task1"),
-            20,
-        ),
-    ];
-
-    println!("TRACE: {:#?}", &trace);
-    let res = wcet_analysis(&trace[..])?;
-    println!("ANALYSIS RESULTS: {:#?}", res);
-
-    Ok(())
-}
-
-pub fn _analyze(a: Analysis) -> Result<()> {
     let ktests = parse_ktest_files(&a.ktests);
     let dwarf = dwarf::get_replay_addresses(&a.dwarf)?;
 
@@ -193,6 +142,8 @@ pub fn _analyze(a: Analysis) -> Result<()> {
             .with_context(|| format!("Could not replay with KTest: {:?}", &ktest))?;
         let bkpts = read_breakpoints(&mut core)?;
         println!("{:#?}", bkpts);
+        let trace = wcet_analysis(bkpts);
+        println!("{:#?}", trace);
     }
 
     Ok(())
@@ -227,22 +178,12 @@ fn write_replay_objects(
             Some(addr) => {
                 let a = addr.unwrap() as u32;
                 let slice = test.bytes.as_slice();
-                // Remove this block later
-                {
-                    println!("Writing {:?} to address {:x?}", slice, a);
-                }
                 core.write_8(a, slice)?;
             }
             None => {
                 // Should log a warning here instead
                 return Err(anyhow!("Address was not found"));
             }
-        }
-        // Remove this block later
-        {
-            let loc = location.unwrap().unwrap();
-            let value = core.read_word_32(loc as u32)?;
-            println!("THE VALUE READ FROM RAM: {:b}, {:x?}", value, value);
         }
     }
     Ok(())
@@ -275,63 +216,72 @@ fn read_breakpoints(core: &mut Core) -> Result<Vec<(Breakpoint, String, u32)>> {
     Ok(stack)
 }
 
-fn wcet_analysis(bkpts: &[(Breakpoint, String, u32)]) -> Result<Vec<Trace>> {
+fn wcet_analysis(mut bkpts: Vec<(Breakpoint, String, u32)>) -> Result<Vec<Trace>> {
     let mut temp: Vec<Entry> = Vec::new();
-    let mut bkpt_stack = bkpts.to_vec();
-    bkpt_stack.reverse();
-    let (traces, _) = wcet_rec(&mut bkpt_stack, &mut temp)?;
+    bkpts.reverse();
+    let (traces, _) = wcet_rec(&mut bkpts, &mut temp)?;
     Ok(traces)
 }
 
+// This function is not the most beautiful code ever written and quite unintuitive!
+// Check the documenation for the analysis to get an understanding of how it works!
+//
+// The `bkpts` contains the tuple (Breakpoint, Name, CYCCNT) of each breakpoint, traced
+// from the replay harness on actual hardware. The `stack` is used internally to keep
+// track of the correct scopes. That is, that for each Entry a corresponding Exit exists.
 fn wcet_rec(
     bkpts: &mut Vec<(Breakpoint, String, u32)>,
     stack: &mut Vec<Entry>,
 ) -> Result<(Vec<Trace>, (Breakpoint, String, u32))> {
+    // This is the main result of this function
     let mut traces: Vec<Trace> = Vec::new();
-    let (bkpt, name, cyccnt) = bkpts.pop().unwrap();
-    let mut curr_bkpt = bkpt.clone();
-    let mut curr_name = name.clone();
-    let mut curr_cyccnt = cyccnt.clone();
+    let (bkpt, name, cyccnt) = match bkpts.pop() {
+        Some((b, n, c)) => (b, n, c),
+        None => return Err(anyhow!("Breakpoint vector is empty")),
+    };
 
-    println!("@ BKPTS: {:#?}", bkpts);
+    // Set the current scope's variables. These are always returned in the end.
+    // Because the outer scope needs to be able to read the objects data.
+    let curr_bkpt = bkpt.clone();
+    let curr_name = name.clone();
+    let curr_cyccnt = cyccnt.clone();
 
-    match &curr_bkpt.clone() {
+    match &curr_bkpt {
         Breakpoint::Entry(e) => {
-            println!("* ENTRY: {:?}. Name: {:?}", &e, &curr_name);
+            // Push this entry to the internal stack. Used to check
+            // that the corresponding Entry, Exit are correct.
             stack.push(e.clone());
+
+            // Build a new trace
             let name = curr_name.clone();
             let ttype = TraceType::from(e.clone());
             let start = curr_cyccnt.clone();
             let mut inner = Vec::<Trace>::new();
 
             // Inner loop
-            let mut prev: Breakpoint = curr_bkpt.clone();
+            let mut prev: Breakpoint;
             let mut end;
             loop {
-                let (mut i, (last, n, e)) = wcet_rec(bkpts, stack).with_context(|| {
+                let (mut i, (last, _, e)) = wcet_rec(bkpts, stack).with_context(|| {
                     format!("Could not proceed with analysis after breakpoint {:?}", &e)
                 })?;
                 inner.append(&mut i);
                 prev = last.clone();
                 end = e;
 
-                // If we get two Exits in a row, the loop should break
+                // If we get two Exits in a row, it means that we're exiting
+                // the inner loop. It should also break if there are no more
+                // objects in the bkpts vector
                 if last.is_exit() && prev.is_exit() || bkpts.is_empty() {
-                    println!(
-                        "** Inner. BREAK. Last: {:?}. Prev: {:?}. Name: {:?}",
-                        &last, &prev, &name
-                    );
                     break;
-                } else {
-                    println!("** Inner. CONTINUE. Last: {:?}", &last);
                 }
             }
             let trace = Trace::new(name, ttype, start, inner, end);
             traces.push(trace);
         }
         Breakpoint::Exit(exit) => {
-            println!("* EXIT: {:?}. Name: {:?}", &exit, &curr_name);
-            // The stack should not be empty if we're exiting the analysis
+            // The stack should not be empty if we're exiting the analysis.
+            // All corresponding Entry/Exit should add up to 255 if correct order.
             let entry = stack.pop().unwrap() as u32;
             let exit = exit.clone() as u32;
             if entry + exit != 255 {
@@ -342,9 +292,8 @@ fn wcet_rec(
                 ));
             }
         }
-        //Breakpoint::Other(Other::Default) => (),
+        // Should ignore the Default breakpoint instead of returning an error
         Breakpoint::Other(o) => {
-            println!("* OTHER: {:?}", &o);
             return Err(anyhow!("Unsupported breakpoint inside analysis: {:?}", o));
         }
     }
@@ -352,74 +301,254 @@ fn wcet_rec(
     Ok((traces, (curr_bkpt, curr_name, curr_cyccnt)))
 }
 
-fn _wcet_analysis_rec(core: &mut Core, stack: &mut Vec<Entry>) -> Result<(Vec<Trace>, Breakpoint)> {
-    // 1.
-    // Go to next breakpoint
-    core_utils::run(core).context("Could not continue from replay start")?;
-    // Wait for core to halt on a breakpoint. If it doesn't
-    // something is wrong.
-    core.wait_for_core_halted(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))?;
-    if !core_utils::breakpoint_at_pc(core)? {
-        return Err(anyhow!(
-            "Core halted, but not due to breakpoint. Can't continue with analysis."
-        ));
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_analysis_nested_and_multiple_locks() {
+        let trace: Vec<(Breakpoint, String, u32)> = vec![
+            (
+                Breakpoint::Entry(Entry::HardwareTaskStart),
+                String::from("task1"),
+                0,
+            ),
+            (
+                Breakpoint::Entry(Entry::ResourceLockStart),
+                String::from("res1"),
+                5,
+            ),
+            (
+                Breakpoint::Entry(Entry::ResourceLockStart),
+                String::from("res2"),
+                10,
+            ),
+            (
+                Breakpoint::Exit(Exit::ResourceLockEnd),
+                String::from("res2"),
+                15,
+            ),
+            (
+                Breakpoint::Exit(Exit::ResourceLockEnd),
+                String::from("res1"),
+                15,
+            ),
+            (
+                Breakpoint::Entry(Entry::ResourceLockStart),
+                String::from("res3"),
+                15,
+            ),
+            (
+                Breakpoint::Exit(Exit::ResourceLockEnd),
+                String::from("res3"),
+                20,
+            ),
+            (
+                Breakpoint::Exit(Exit::HardwareTaskEnd),
+                String::from("task1"),
+                20,
+            ),
+        ];
+
+        let analysis = wcet_analysis(trace).unwrap();
+        let result = analysis.first().unwrap();
+        let expected = Trace {
+            name: "task1".to_string(),
+            ttype: TraceType::HardwareTask,
+            start: 0,
+            inner: vec![
+                Trace {
+                    name: "res1".to_string(),
+                    ttype: TraceType::ResourceLock,
+                    start: 5,
+                    inner: vec![Trace {
+                        name: "res2".to_string(),
+                        ttype: TraceType::ResourceLock,
+                        start: 10,
+                        inner: vec![],
+                        end: 15,
+                    }],
+                    end: 15,
+                },
+                Trace {
+                    name: "res3".to_string(),
+                    ttype: TraceType::ResourceLock,
+                    start: 15,
+                    inner: vec![],
+                    end: 20,
+                },
+            ],
+            end: 20,
+        };
+        assert_eq!(result, &expected)
     }
 
-    // 2.
-    // Read breakpoint value
-    let mut traces: Vec<Trace> = Vec::new();
-    let imm = Breakpoint::from(core_utils::read_breakpoint_value(core)?);
-    let mut current = imm.clone();
-    match imm.clone() {
-        Breakpoint::Entry(e) => {
-            println!("* ENTRY: {:?}", &e);
-            stack.push(e.clone());
-            let name = "".to_string();
-            let ttype = TraceType::from(e.clone());
-            let start = core_utils::read_cycle_counter(core)?;
-            let mut inner = Vec::<Trace>::new();
-            // Inner loop
-            let mut prev: Breakpoint = imm.clone();
-            loop {
-                let (mut i, last) = _wcet_analysis_rec(core, stack).with_context(|| {
-                    format!("Could not proceed with analysis after breakpoint {:?}", &e)
-                })?;
-                inner.append(&mut i);
-
-                // If we get two Exits in a row, the loop should break
-                // Or if i is empty it means the scope should end.
-                if (last.is_exit() && prev.is_exit()) || i.is_empty() {
-                    println!("** Inner. BREAK. Last: {:?}", &last);
-                    current = last.clone();
-                    break;
-                } else {
-                    println!("** Inner. CONTINUE. Last: {:?}", &last);
-                    current = last.clone();
-                    prev = last;
-                }
-            }
-            let end = core_utils::read_cycle_counter(core)?;
-            let trace = Trace::new(name, ttype, start, inner, end);
-            traces.push(trace);
-        }
-        Breakpoint::Exit(exit) => {
-            println!("* EXIT: {:?}", &exit);
-            // The stack should not be empty if we're exiting the analysis
-            let entry = stack.pop().unwrap() as u32;
-            let exit = exit as u32;
-            if entry + exit != 255 {
-                return Err(anyhow!(
-                    "Breakpoint scope not matching! Got entry: {} and exit: {}",
-                    entry,
-                    exit
-                ));
-            }
-        }
-        //Breakpoint::Other(Other::Default) => (),
-        Breakpoint::Other(o) => {
-            println!("* OTHER: {:?}", &o);
-            return Err(anyhow!("Unsupported breakpoint inside analysis: {:?}", o));
-        }
+    #[test]
+    fn test_multiple_locks() {
+        let trace: Vec<(Breakpoint, String, u32)> = vec![
+            (
+                Breakpoint::Entry(Entry::SoftwareTaskStart),
+                String::from("task1"),
+                0,
+            ),
+            (
+                Breakpoint::Entry(Entry::ResourceLockStart),
+                String::from("res1"),
+                5,
+            ),
+            (
+                Breakpoint::Exit(Exit::ResourceLockEnd),
+                String::from("res1"),
+                15,
+            ),
+            (
+                Breakpoint::Entry(Entry::ResourceLockStart),
+                String::from("res2"),
+                15,
+            ),
+            (
+                Breakpoint::Exit(Exit::ResourceLockEnd),
+                String::from("res2"),
+                20,
+            ),
+            (
+                Breakpoint::Entry(Entry::ResourceLockStart),
+                String::from("res3"),
+                20,
+            ),
+            (
+                Breakpoint::Exit(Exit::ResourceLockEnd),
+                String::from("res3"),
+                25,
+            ),
+            (
+                Breakpoint::Exit(Exit::SoftwareTaskEnd),
+                String::from("task1"),
+                30,
+            ),
+        ];
+        let analysis = wcet_analysis(trace).unwrap();
+        let result = analysis.first().unwrap();
+        let expected = Trace {
+            name: "task1".to_string(),
+            ttype: TraceType::SoftwareTask,
+            start: 0,
+            inner: vec![
+                Trace {
+                    name: "res1".to_string(),
+                    ttype: TraceType::ResourceLock,
+                    start: 5,
+                    inner: vec![],
+                    end: 15,
+                },
+                Trace {
+                    name: "res2".to_string(),
+                    ttype: TraceType::ResourceLock,
+                    start: 15,
+                    inner: vec![],
+                    end: 20,
+                },
+                Trace {
+                    name: "res3".to_string(),
+                    ttype: TraceType::ResourceLock,
+                    start: 20,
+                    inner: vec![],
+                    end: 25,
+                },
+            ],
+            end: 30,
+        };
+        assert_eq!(result, &expected);
     }
-    Ok((traces, current))
+
+    #[test]
+    fn test_analysis_invalid_input_size() {
+        let trace: Vec<(Breakpoint, String, u32)> = vec![
+            (
+                Breakpoint::Entry(Entry::HardwareTaskStart),
+                String::from("task1"),
+                0,
+            ),
+            (
+                Breakpoint::Entry(Entry::ResourceLockStart),
+                String::from("res1"),
+                5,
+            ),
+            (
+                Breakpoint::Exit(Exit::HardwareTaskEnd),
+                String::from("task1"),
+                10,
+            ),
+        ];
+        let analysis = wcet_analysis(trace);
+        assert!(analysis.is_err());
+    }
+
+    #[test]
+    fn test_analysis_empty_input() {
+        let trace: Vec<(Breakpoint, String, u32)> = vec![];
+        let analysis = wcet_analysis(trace);
+        assert!(analysis.is_err());
+    }
+
+    #[test]
+    fn test_analysis_empty_inner_trace() {
+        let trace: Vec<(Breakpoint, String, u32)> = vec![
+            (
+                Breakpoint::Entry(Entry::HardwareTaskStart),
+                String::from("task1"),
+                0,
+            ),
+            (
+                Breakpoint::Exit(Exit::HardwareTaskEnd),
+                String::from("task1"),
+                10,
+            ),
+        ];
+        let analysis = wcet_analysis(trace).unwrap();
+        let result = analysis.first().unwrap();
+        let expected = Trace {
+            name: "task1".to_string(),
+            ttype: TraceType::HardwareTask,
+            start: 0,
+            inner: vec![],
+            end: 10,
+        };
+        assert_eq!(result, &expected);
+    }
+
+    #[test]
+    fn test_analysis_wrong_task_order() {
+        let trace: Vec<(Breakpoint, String, u32)> = vec![
+            (
+                Breakpoint::Entry(Entry::HardwareTaskStart),
+                String::from("task1"),
+                0,
+            ),
+            (
+                Breakpoint::Exit(Exit::SoftwareTaskEnd),
+                String::from("task1"),
+                10,
+            ),
+        ];
+        let analysis = wcet_analysis(trace);
+        assert!(analysis.is_err());
+    }
+
+    #[test]
+    fn test_analysis_wrong_lock_order() {
+        let trace: Vec<(Breakpoint, String, u32)> = vec![
+            (
+                Breakpoint::Entry(Entry::ResourceLockStart),
+                String::from("res1"),
+                0,
+            ),
+            (
+                Breakpoint::Exit(Exit::SoftwareTaskEnd),
+                String::from("task1"),
+                10,
+            ),
+        ];
+        let analysis = wcet_analysis(trace);
+        assert!(analysis.is_err());
+    }
 }
