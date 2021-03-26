@@ -12,6 +12,8 @@ use object::Object;
 use probe_rs::{Core, MemoryInterface, Probe};
 use std::{borrow, fs};
 
+use self::dwarf::Subprogram;
+
 const HALT_TIMEOUT_SECONDS: u64 = 5;
 
 pub fn analyze(a: Analysis) -> Result<()> {
@@ -34,31 +36,30 @@ pub fn analyze(a: Analysis) -> Result<()> {
     // Create `EndianSlice`s for all of the sections.
     let dwarf = dwarf_cow.borrow(&borrow_section);
 
-    {
-        let ktests = parse_ktest_files(&a.ktests);
-        let addr = dwarf::get_replay_addresses(&dwarf)?;
-        println!("{:#x?}", ktests);
-        println!("{:#x?}", addr);
+    let ktests = parse_ktest_files(&a.ktests);
+    let addr = dwarf::get_replay_addresses(&dwarf)?;
+    let subprograms = dwarf::get_subprograms(&dwarf)?;
+    println!("{:#x?}", ktests);
+    println!("{:#x?}", addr);
 
-        let probes = Probe::list_all();
-        let probe = probes[0].open()?;
+    let probes = Probe::list_all();
+    let probe = probes[0].open()?;
 
-        let mut session = probe.attach(a.chip)?;
+    let mut session = probe.attach(a.chip)?;
 
-        let mut core = session.core(0)?;
+    let mut core = session.core(0)?;
 
-        // Analysis
-        for ktest in ktests {
-            println!("-------------------------------------------------------------");
-            // Continue until reaching BKPT 255 (replaystart)
-            run_to_replay_start(&mut core).context("Could not continue to replay start")?;
-            write_replay_objects(&mut core, &ktest, &addr)
-                .with_context(|| format!("Could not replay with KTest: {:?}", &ktest))?;
-            let bkpts = read_breakpoints(&mut core, &dwarf)?;
-            println!("{:#?}", bkpts);
-            let trace = analysis::wcet_analysis(bkpts);
-            println!("{:#?}", trace);
-        }
+    // Analysis
+    for ktest in ktests {
+        println!("-------------------------------------------------------------");
+        // Continue until reaching BKPT 255 (replaystart)
+        run_to_replay_start(&mut core).context("Could not continue to replay start")?;
+        write_replay_objects(&mut core, &ktest, &addr)
+            .with_context(|| format!("Could not replay with KTest: {:?}", &ktest))?;
+        let bkpts = read_breakpoints(&mut core, &subprograms)?;
+        println!("{:#?}", bkpts);
+        let trace = analysis::wcet_analysis(bkpts);
+        println!("{:#?}", trace);
     }
 
     Ok(())
@@ -84,7 +85,16 @@ pub fn test_dwarf(a: Analysis) -> Result<()> {
     // Create `EndianSlice`s for all of the sections.
     let dwarf = dwarf_cow.borrow(&borrow_section);
 
-    dwarf::test_subprograms(&dwarf)?;
+    let subprograms = dwarf::get_subprograms(&dwarf)?;
+    println!("{:#?}", &subprograms);
+    let addr = 0x800020d;
+    let in_range = dwarf::get_subprograms_in_range(&subprograms, addr)?;
+
+    println!("{:#?}", &in_range);
+    println!(
+        "Shortest range: {:#?}",
+        dwarf::get_shortest_range_subprogram(&in_range)?
+    );
 
     Ok(())
 }
@@ -133,7 +143,7 @@ fn write_replay_objects(
 /// between the ReplayStart breakpoints and return them as a list
 fn read_breakpoints(
     core: &mut Core,
-    dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
+    subprograms: &Vec<Subprogram>,
 ) -> Result<Vec<(Breakpoint, String, u32)>> {
     let mut stack: Vec<(Breakpoint, String, u32)> = Vec::new();
     let mut name = "".to_string();
@@ -153,10 +163,18 @@ fn read_breakpoints(
             // On ReplayStart the loop is complete
             Breakpoint::Other(Other::ReplayStart) => break,
             // Save the name and continue to the next loop iteration
-            Breakpoint::Other(Other::InsideScope) => {
-                name = read_breakpoint_scope_name(core, dwarf)?;
+            Breakpoint::Other(Other::InsideTask) => {
+                let name = read_breakpoint_task_name(core, &subprograms)?;
+                let (b, _, u) = stack.pop().unwrap();
+                stack.push((b, name, u));
+
                 continue;
             }
+            Breakpoint::Other(Other::InsideLock) => {
+                name = read_breakpoint_lock_name(core, &subprograms)?;
+                continue;
+            }
+            // Ignore everything else for now
             _ => (),
         }
 
@@ -168,10 +186,25 @@ fn read_breakpoints(
 }
 
 /// Tries to read the name of the current scope of the breakpoint from DWARF
-fn read_breakpoint_scope_name(
-    core: &mut Core,
-    dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
-) -> Result<String> {
+fn read_breakpoint_task_name(core: &mut Core, subprograms: &Vec<Subprogram>) -> Result<String> {
+    let lr = core.registers().return_address();
+    let lr_val = core.read_core_reg(lr)?;
+
+    let in_range = dwarf::get_subprograms_in_range(subprograms, lr_val as u64)?;
+    let optimal = dwarf::get_shortest_range_subprogram(&in_range)?;
+
+    println!("LR VALUE IS: {:x?}", lr_val);
+    let name = match optimal {
+        Some(s) => s.name,
+        None => "".to_string(),
+    };
+    Ok(name)
+}
+
+fn read_breakpoint_lock_name(core: &mut Core, subprograms: &Vec<Subprogram>) -> Result<String> {
+    let lr = core.registers().return_address();
+    let lr_val = core.read_core_reg(lr)?;
+    println!("LR VALUE IS: {:x?}", lr_val);
     let string = "".to_string();
     Ok(string)
 }

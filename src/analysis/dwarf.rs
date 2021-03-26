@@ -20,6 +20,19 @@ struct ObjectLocation {
     pub address: Option<u64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Subprogram {
+    pub name: String,
+    low_pc: u64,
+    high_pc: u64,
+}
+
+impl Subprogram {
+    fn in_range(&self, address: u64) -> bool {
+        (self.low_pc <= address) && (address <= self.high_pc)
+    }
+}
+
 pub type ObjectLocationMap = HashMap<String, Option<u64>>;
 
 /// Loads a DWARF object from file
@@ -140,41 +153,116 @@ fn parse_variable_entry(
     Ok(None)
 }
 
-pub fn test_subprograms(dwarf: &Dwarf<EndianSlice<RunTimeEndian>>) -> Result<()> {
+/// Reads the DWARF and returns a list of all subprograms in it.
+pub fn get_subprograms(dwarf: &Dwarf<EndianSlice<RunTimeEndian>>) -> Result<Vec<Subprogram>> {
     let mut iter = dwarf.units();
+    let mut programs: Vec<Subprogram> = vec![];
     while let Some(header) = iter.next()? {
-        println!(
-            "Unit at <.debug_info+0x{:x}>",
-            header.offset().as_debug_info_offset().unwrap().0
-        );
         let unit = dwarf.unit(header)?;
-        parse_subprograms(dwarf, header, unit)?;
+        let mut result = parse_subprograms(dwarf, unit)?;
+        programs.append(&mut result);
     }
-    Ok(())
+    Ok(programs)
+}
+
+/// Returns a new list of the subprograms where the given address is in range.
+pub fn get_subprograms_in_range(
+    subprograms: &Vec<Subprogram>,
+    address: u64,
+) -> Result<Vec<Subprogram>> {
+    let mut ok: Vec<Subprogram> = vec![];
+
+    for subprogram in subprograms {
+        if subprogram.in_range(address) {
+            ok.push(subprogram.clone());
+        }
+    }
+
+    Ok(ok)
+}
+
+/// Returns the subprogram in the given list with the shortest range.
+pub fn get_shortest_range_subprogram(
+    subprograms_in_range: &Vec<Subprogram>,
+) -> Result<Option<Subprogram>> {
+    let mut ok: Option<Subprogram> = None;
+    let mut shortest_range: u64 = u64::MAX;
+
+    for subprogram in subprograms_in_range {
+        let sp_range = subprogram.high_pc - subprogram.low_pc;
+        if sp_range < shortest_range {
+            shortest_range = sp_range;
+            ok = Some(subprogram.clone());
+        }
+    }
+    Ok(ok)
 }
 
 fn parse_subprograms(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
-    header: UnitHeader<EndianSlice<RunTimeEndian>>,
     unit: Unit<EndianSlice<RunTimeEndian>>,
-) -> Result<()> {
+) -> Result<Vec<Subprogram>> {
     let mut entries = unit.entries();
-    while let Some((_, entry)) = entries.next_dfs()? {
+    let mut programs: Vec<Subprogram> = vec![];
+    while let Some((_depth, entry)) = entries.next_dfs()? {
         if entry.tag() == gimli::DW_TAG_subprogram {
-            parse_subprogram(dwarf, entry, &header)?;
+            let res = parse_subprogram(dwarf, entry)?;
+            match res {
+                Some(program) => programs.push(program),
+                None => (),
+            }
         }
     }
-    Ok(())
+    Ok(programs)
 }
 
 fn parse_subprogram(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
-    header: &UnitHeader<EndianSlice<RunTimeEndian>>,
-) -> Result<()> {
+) -> Result<Option<Subprogram>> {
     let mut attrs = entry.attrs();
+
+    let mut subprogram: Option<Subprogram> = None;
+    let mut name: String = String::new();
+    let mut low_pc: Option<u64> = None;
+    let mut high_pc: Option<u64> = None;
+
     while let Some(attr) = attrs.next()? {
-        println!("   {}: {:?}", attr.name(), attr.value());
+        if attr.name() == gimli::constants::DW_AT_low_pc {
+            match attr.value() {
+                AttributeValue::Addr(a) => low_pc = Some(a),
+                _ => (),
+            }
+        } else if attr.name() == gimli::constants::DW_AT_high_pc {
+            match attr.value() {
+                AttributeValue::Udata(a) => high_pc = Some(a),
+                _ => (),
+            }
+        } else if attr.name() == gimli::constants::DW_AT_name {
+            match attr.value() {
+                AttributeValue::DebugStrRef(offset) => {
+                    name = dwarf
+                        .string(offset)
+                        .unwrap()
+                        .to_string()
+                        .unwrap()
+                        .to_string();
+                }
+                _ => (),
+            }
+        }
     }
-    Ok(())
+
+    match (low_pc, high_pc) {
+        (Some(low), Some(high)) => {
+            subprogram = Some(Subprogram {
+                name: name,
+                low_pc: low,
+                high_pc: low + high,
+            })
+        }
+        _ => (),
+    }
+
+    Ok(subprogram)
 }

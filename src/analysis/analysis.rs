@@ -90,8 +90,9 @@ pub enum Exit {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Other {
     Default = 0,
-    InsideScope = 1,
+    InsideTask = 1,
     Invalid = 100,
+    InsideLock = 254,
     ReplayStart = 255,
 }
 
@@ -99,13 +100,14 @@ impl From<u8> for Breakpoint {
     fn from(u: u8) -> Breakpoint {
         match u {
             0 => Breakpoint::Other(Other::Default),
-            1 => Breakpoint::Other(Other::InsideScope),
+            1 => Breakpoint::Other(Other::InsideTask),
             2 => Breakpoint::Entry(Entry::HardwareTaskStart),
             3 => Breakpoint::Entry(Entry::ResourceLockStart),
             4 => Breakpoint::Entry(Entry::SoftwareTaskStart),
             251 => Breakpoint::Exit(Exit::SoftwareTaskEnd),
             252 => Breakpoint::Exit(Exit::ResourceLockEnd),
             253 => Breakpoint::Exit(Exit::HardwareTaskEnd),
+            254 => Breakpoint::Other(Other::InsideLock),
             255 => Breakpoint::Other(Other::ReplayStart),
             _ => Breakpoint::Other(Other::Invalid),
         }
@@ -188,7 +190,6 @@ fn wcet_rec(
                 ));
             }
         }
-        Breakpoint::Other(Other::InsideScope) => (),
         // Should ignore the Default breakpoint instead of returning an error
         Breakpoint::Other(o) => {
             return Err(anyhow!("Unsupported breakpoint inside analysis: {:?}", o));
