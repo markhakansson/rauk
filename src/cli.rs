@@ -18,6 +18,7 @@ pub enum Command {
     Flash(Flashing),
     Analyze(Analysis),
     All(All),
+    Test(Analysis),
 }
 
 /// Generate test vectors for an RTIC application

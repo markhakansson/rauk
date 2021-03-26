@@ -39,6 +39,9 @@ fn main() {
         Command::All(a) => {
             run_all(a);
         }
+        Command::Test(a) => {
+            analysis::test_dwarf(a).unwrap();
+        }
     }
 }
 

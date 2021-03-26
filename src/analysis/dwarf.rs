@@ -22,18 +22,8 @@ struct ObjectLocation {
 
 pub type ObjectLocationMap = HashMap<String, Option<u64>>;
 
-/// Reads the binary's DWARF format and returns a list of replay variables and their memory
-/// location addresses.
-pub fn get_replay_addresses(binary_path: &PathBuf) -> Result<ObjectLocationMap> {
-    let file = fs::File::open(&binary_path)?;
-    let mmap = unsafe { memmap::Mmap::map(&file)? };
-    let object = object::File::parse(&*mmap)?;
-    let endian = if object.is_little_endian() {
-        gimli::RunTimeEndian::Little
-    } else {
-        gimli::RunTimeEndian::Big
-    };
-    let mut objects: ObjectLocationMap = HashMap::new();
+/// Loads a DWARF object from file
+pub fn load_dwarf_from_file(object: object::File) -> Result<Dwarf<borrow::Cow<[u8]>>> {
     // Load a section and return as `Cow<[u8]>`.
     let load_section = |id: gimli::SectionId| -> Result<borrow::Cow<[u8]>, gimli::Error> {
         match object.section_by_name(id.name()) {
@@ -43,27 +33,26 @@ pub fn get_replay_addresses(binary_path: &PathBuf) -> Result<ObjectLocationMap> 
             None => Ok(borrow::Cow::Borrowed(&[][..])),
         }
     };
+
     // Load a supplementary section. We don't have a supplementary object file,
     // so always return an empty slice.
     let load_section_sup = |_| Ok(borrow::Cow::Borrowed(&[][..]));
 
     // Load all of the sections.
-    let dwarf_cow = gimli::Dwarf::load(&load_section, &load_section_sup)?;
+    Ok(gimli::Dwarf::load(&load_section, &load_section_sup)?)
+}
 
-    // Borrow a `Cow<[u8]>` to create an `EndianSlice`.
-    let borrow_section: &dyn for<'a> Fn(
-        &'a borrow::Cow<[u8]>,
-    ) -> gimli::EndianSlice<'a, gimli::RunTimeEndian> =
-        &|section| gimli::EndianSlice::new(&*section, endian);
-
-    // Create `EndianSlice`s for all of the sections.
-    let dwarf = dwarf_cow.borrow(&borrow_section);
-
+/// Reads the binary's DWARF format and returns a list of replay variables and their memory
+/// location addresses.
+pub fn get_replay_addresses(
+    dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
+) -> Result<ObjectLocationMap> {
+    let mut objects: ObjectLocationMap = HashMap::new();
     // Iterate over the compilation units.
     let mut iter = dwarf.units();
     while let Some(header) = iter.next()? {
         let unit = dwarf.unit(header)?;
-        let entries = parse_entries(&dwarf, header, unit)?;
+        let entries = parse_variable_entries(&dwarf, header, unit)?;
         for entry in entries {
             objects.insert(entry.name, entry.address);
         }
@@ -71,7 +60,7 @@ pub fn get_replay_addresses(binary_path: &PathBuf) -> Result<ObjectLocationMap> 
     Ok(objects)
 }
 
-fn parse_entries(
+fn parse_variable_entries(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     header: UnitHeader<EndianSlice<RunTimeEndian>>,
     unit: Unit<EndianSlice<RunTimeEndian>>,
@@ -82,7 +71,7 @@ fn parse_entries(
     while let Some((_, entry)) = entries.next_dfs()? {
         // Iterate over the variables in the DIE.
         if entry.tag() == gimli::DW_TAG_variable {
-            match parse_variable(&entry, &dwarf, &header)? {
+            match parse_variable_entry(&entry, &dwarf, &header)? {
                 Some(variable) => objects.push(variable),
                 None => (),
             }
@@ -91,7 +80,7 @@ fn parse_entries(
     Ok(objects)
 }
 
-fn parse_variable(
+fn parse_variable_entry(
     entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     header: &UnitHeader<EndianSlice<RunTimeEndian>>,
@@ -149,4 +138,43 @@ fn parse_variable(
         return Ok(Some(replay));
     }
     Ok(None)
+}
+
+pub fn test_subprograms(dwarf: &Dwarf<EndianSlice<RunTimeEndian>>) -> Result<()> {
+    let mut iter = dwarf.units();
+    while let Some(header) = iter.next()? {
+        println!(
+            "Unit at <.debug_info+0x{:x}>",
+            header.offset().as_debug_info_offset().unwrap().0
+        );
+        let unit = dwarf.unit(header)?;
+        parse_subprograms(dwarf, header, unit)?;
+    }
+    Ok(())
+}
+
+fn parse_subprograms(
+    dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
+    header: UnitHeader<EndianSlice<RunTimeEndian>>,
+    unit: Unit<EndianSlice<RunTimeEndian>>,
+) -> Result<()> {
+    let mut entries = unit.entries();
+    while let Some((_, entry)) = entries.next_dfs()? {
+        if entry.tag() == gimli::DW_TAG_subprogram {
+            parse_subprogram(dwarf, entry, &header)?;
+        }
+    }
+    Ok(())
+}
+
+fn parse_subprogram(
+    dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
+    entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
+    header: &UnitHeader<EndianSlice<RunTimeEndian>>,
+) -> Result<()> {
+    let mut attrs = entry.attrs();
+    while let Some(attr) = attrs.next()? {
+        println!("   {}: {:?}", attr.name(), attr.value());
+    }
+    Ok(())
 }
