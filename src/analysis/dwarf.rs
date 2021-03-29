@@ -312,6 +312,23 @@ pub fn get_subroutines(dwarf: &Dwarf<EndianSlice<RunTimeEndian>>) -> Result<Vec<
     Ok(subroutines)
 }
 
+/// Returns the subprogram in the given list with the shortest range.
+pub fn get_shortest_range_subroutine(
+    subroutines_in_range: &Vec<Subroutine>,
+) -> Result<Option<Subroutine>> {
+    let mut ok: Option<Subroutine> = None;
+    let mut shortest_range: u64 = u64::MAX;
+
+    for subroutine in subroutines_in_range {
+        let sp_range = subroutine.high_pc - subroutine.low_pc;
+        if sp_range < shortest_range {
+            shortest_range = sp_range;
+            ok = Some(subroutine.clone());
+        }
+    }
+    Ok(ok)
+}
+
 fn parse_inlined_subroutines(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     unit: &Unit<EndianSlice<RunTimeEndian>>,

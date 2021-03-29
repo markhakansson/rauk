@@ -179,7 +179,10 @@ fn read_breakpoints(
                 continue;
             }
             Breakpoint::Other(Other::InsideLock) => {
-                name = read_breakpoint_lock_name(core, &subroutines)?;
+                let name = read_breakpoint_lock_name(core, &subroutines)?;
+                let (b, _, u) = stack.pop().unwrap();
+                stack.push((b, name, u));
+
                 continue;
             }
             // Ignore everything else for now
@@ -212,7 +215,14 @@ fn read_breakpoint_task_name(core: &mut Core, subprograms: &Vec<Subprogram>) -> 
 fn read_breakpoint_lock_name(core: &mut Core, subroutines: &Vec<Subroutine>) -> Result<String> {
     let lr = core.registers().return_address();
     let lr_val = core.read_core_reg(lr)?;
+
+    let in_range = dwarf::get_subroutines_in_range(subroutines, lr_val as u64)?;
+    let optimal = dwarf::get_shortest_range_subroutine(&in_range)?;
+
     println!("LR VALUE IS: {:x?}", lr_val);
-    let string = "".to_string();
-    Ok(string)
+    let name = match optimal {
+        Some(s) => s.name,
+        None => "".to_string(),
+    };
+    Ok(name)
 }
