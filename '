@@ -7,8 +7,6 @@ use gimli::{
     RunTimeEndian, UnitHeader,
 };
 use object::{Object, ObjectSection};
-use regex::Regex;
-use rustc_demangle::demangle;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{borrow, fs};
@@ -20,12 +18,7 @@ pub struct Subroutine {
     pub name: String,
     pub low_pc: u64,
     pub high_pc: u64,
-}
-
-impl Subroutine {
-    fn in_range(&self, address: u64) -> bool {
-        (self.low_pc <= address) && (address <= self.high_pc)
-    }
+    pub parameters: Vec<ObjectLocation>,
 }
 
 // Details about a resource object and its location in RAM
@@ -196,21 +189,6 @@ pub fn get_subprograms_in_range(
     Ok(ok)
 }
 
-pub fn get_subroutines_in_range(
-    subroutines: &Vec<Subroutine>,
-    address: u64,
-) -> Result<Vec<Subroutine>> {
-    let mut ok: Vec<Subroutine> = vec![];
-
-    for subroutine in subroutines {
-        if subroutine.in_range(address) {
-            ok.push(subroutine.clone());
-        }
-    }
-
-    Ok(ok)
-}
-
 /// Returns the subprogram in the given list with the shortest range.
 pub fn get_shortest_range_subprogram(
     subprograms_in_range: &Vec<Subprogram>,
@@ -297,64 +275,48 @@ fn parse_subprogram(
     Ok(subprogram)
 }
 
-/// Reads the DWARF and returns a list of subroutines and their low and high PCs.
-pub fn get_subroutines(dwarf: &Dwarf<EndianSlice<RunTimeEndian>>) -> Result<Vec<Subroutine>> {
+pub fn test_inlined(dwarf: &Dwarf<EndianSlice<RunTimeEndian>>) -> Result<()> {
     let mut iter = dwarf.units();
-    let mut subroutines: Vec<Subroutine> = Vec::new();
-
-    let re = Regex::new(r"<impl rtic_core::Mutex for (.*?)>::lock")?;
-
     while let Some(header) = iter.next()? {
         let unit = dwarf.unit(header)?;
-        let mut result = parse_inlined_subroutines(dwarf, &unit, &header)?;
-        subroutines.append(&mut result);
+        parse_inlined_subroutines(dwarf, &unit, &header)?;
     }
-    Ok(subroutines)
+    Ok(())
 }
 
 fn parse_inlined_subroutines(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     unit: &Unit<EndianSlice<RunTimeEndian>>,
     header: &UnitHeader<EndianSlice<RunTimeEndian>>,
-) -> Result<Vec<Subroutine>> {
+) -> Result<()> {
     let mut entries = unit.entries();
-    let mut subroutines: Vec<Subroutine> = Vec::new();
 
-    while let Some((_, entry)) = entries.next_dfs()? {
+    while let Some((depth, entry)) = entries.next_dfs()? {
+        println!("DEPTH IS: {}", depth);
         if entry.tag() == gimli::DW_TAG_inlined_subroutine {
-            match parse_inlined_subroutine(dwarf, header, entry)? {
-                Some(subroutine) => subroutines.push(subroutine),
-                None => (),
-            }
+            parse_inlined_subroutine(dwarf, entry)?;
+        // Here we should check that formal_parameter is part of the inlined
+        // subroutine using the depth value.
+        } else if entry.tag() == gimli::constants::DW_TAG_formal_parameter {
+            let _object = parse_register_location(entry, dwarf, &header)?;
+            println!("hihihihihihihi  {:?}", _object);
         }
     }
-    Ok(subroutines)
+    Ok(())
 }
 
 fn parse_inlined_subroutine(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
-    header: &UnitHeader<EndianSlice<RunTimeEndian>>,
     entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
-) -> Result<Option<Subroutine>> {
+) -> Result<()> {
     let mut attrs = entry.attrs();
 
-    let mut name: Option<String> = None;
+    let mut name = "".to_string();
     let mut low_pc: Option<u64> = None;
     let mut high_pc: Option<u64> = None;
-
     while let Some(attr) = attrs.next()? {
-        if attr.name() == gimli::constants::DW_AT_abstract_origin {
-            let abbrv = dwarf.abbreviations(header)?;
-            match attr.value() {
-                AttributeValue::UnitRef(ur) => {
-                    let origin = header.entry(&abbrv, ur)?;
-                    let origin_name = parse_abstract_origin(dwarf, header, &origin)?;
-                    name = parse_resource_name_from_abstract(origin_name);
-                    // name = function to split ehre
-                }
-                _ => (),
-            }
-        } else if attr.name() == gimli::constants::DW_AT_low_pc {
+        println!("   {}: {:?}", attr.name(), attr.value());
+        if attr.name() == gimli::constants::DW_AT_low_pc {
             match attr.value() {
                 AttributeValue::Addr(a) => low_pc = Some(a),
                 _ => (),
@@ -366,69 +328,10 @@ fn parse_inlined_subroutine(
             }
         }
     }
-
-    let subroutine = match (name, low_pc, high_pc) {
-        (Some(name), Some(low), Some(high)) => Some(Subroutine {
-            name: name,
-            low_pc: low,
-            high_pc: low + high,
-        }),
-        _ => None,
-    };
-
-    Ok(subroutine)
+    Ok(())
 }
 
-fn parse_resource_name_from_abstract(unmangled_name: String) -> Option<String> {
-    let mut v: Vec<&str> = unmangled_name.split("impl rtic_core::Mutex for ").collect();
-    println!("v {:?}", &v);
-    if v.len() > 1 {
-        match v.pop() {
-            Some(string) => {
-                let newsubstr: Vec<&str> = string.split(">::lock").collect();
-                println!("newsubstr: {:?}", &newsubstr);
-                if newsubstr.is_empty() {
-                    None
-                } else {
-                    Some(newsubstr[0].to_string())
-                }
-            }
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-fn parse_abstract_origin(
-    dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
-    header: &UnitHeader<EndianSlice<RunTimeEndian>>,
-    entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
-) -> Result<String> {
-    let mut attrs = entry.attrs();
-    let mut name: String = String::new();
-
-    while let Some(attr) = attrs.next()? {
-        if attr.name() == gimli::constants::DW_AT_linkage_name {
-            match attr.value() {
-                AttributeValue::DebugStrRef(offset) => {
-                    let origin_name = dwarf
-                        .string(offset)
-                        .unwrap()
-                        .to_string()
-                        .unwrap()
-                        .to_string();
-                    name = demangle(&origin_name).to_string();
-                }
-                _ => (),
-            }
-        }
-    }
-
-    Ok(name)
-}
-
-fn _parse_register_location(
+fn parse_register_location(
     entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     header: &UnitHeader<EndianSlice<RunTimeEndian>>,
@@ -458,10 +361,9 @@ fn _parse_register_location(
                     let mut result = eval.evaluate()?;
                     println!("result: {:?}", result);
                     match result {
-                        EvaluationResult::RequiresRegister {
-                            register,
-                            base_type,
-                        } => {}
+                        EvaluationResult::RequiresRegister {r, b } => {
+                            result = eval.resume_with_register(r)?;
+                        }
                         _ => (),
                     }
 

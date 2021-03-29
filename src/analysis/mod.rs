@@ -1,6 +1,7 @@
 mod analysis;
 mod dwarf;
 
+use self::dwarf::{Subprogram, Subroutine};
 use crate::cli::Analysis;
 use crate::utils::{klee::parse_ktest_files, probe as core_utils};
 use analysis::{Breakpoint, Other};
@@ -11,8 +12,6 @@ use ktest_parser::KTest;
 use object::Object;
 use probe_rs::{Core, MemoryInterface, Probe};
 use std::{borrow, fs};
-
-use self::dwarf::Subprogram;
 
 const HALT_TIMEOUT_SECONDS: u64 = 5;
 
@@ -39,6 +38,7 @@ pub fn analyze(a: Analysis) -> Result<()> {
     let ktests = parse_ktest_files(&a.ktests);
     let addr = dwarf::get_replay_addresses(&dwarf)?;
     let subprograms = dwarf::get_subprograms(&dwarf)?;
+    let subroutines = dwarf::get_subroutines(&dwarf)?;
     println!("{:#x?}", ktests);
     println!("{:#x?}", addr);
 
@@ -56,7 +56,7 @@ pub fn analyze(a: Analysis) -> Result<()> {
         run_to_replay_start(&mut core).context("Could not continue to replay start")?;
         write_replay_objects(&mut core, &ktest, &addr)
             .with_context(|| format!("Could not replay with KTest: {:?}", &ktest))?;
-        let bkpts = read_breakpoints(&mut core, &subprograms)?;
+        let bkpts = read_breakpoints(&mut core, &subprograms, &subroutines)?;
         println!("{:#?}", bkpts);
         let trace = analysis::wcet_analysis(bkpts);
         println!("{:#?}", trace);
@@ -86,16 +86,23 @@ pub fn test_dwarf(a: Analysis) -> Result<()> {
     let dwarf = dwarf_cow.borrow(&borrow_section);
 
     let subprograms = dwarf::get_subprograms(&dwarf)?;
-    println!("{:#?}", &subprograms);
-    let addr = 0x800020d;
-    let in_range = dwarf::get_subprograms_in_range(&subprograms, addr)?;
+    //println!("{:#?}", &subprograms);
+    //let addr = 0x800020d;
+    //let in_range = dwarf::get_subprograms_in_range(&subprograms, addr)?;
 
-    println!("{:#?}", &in_range);
-    println!(
-        "Shortest range: {:#?}",
-        dwarf::get_shortest_range_subprogram(&in_range)?
-    );
+    //println!("{:#?}", &in_range);
+    // println!(
+    //     "Shortest range: {:#?}",
+    //     dwarf::get_shortest_range_subprogram(&in_range)?
+    // );
 
+    println!("----- INLINED SUBROUTINES -----");
+    let subroutines = dwarf::get_subroutines(&dwarf)?;
+    println!("{:#?}", &subroutines);
+    let tst_addr = 0x0800_0277;
+    let subroutines_in_range = dwarf::get_subroutines_in_range(&subroutines, tst_addr);
+    println!("----- IN RANGE INLINED SUBROUTINES -----");
+    println!("{:#?}", subroutines_in_range);
     Ok(())
 }
 
@@ -144,6 +151,7 @@ fn write_replay_objects(
 fn read_breakpoints(
     core: &mut Core,
     subprograms: &Vec<Subprogram>,
+    subroutines: &Vec<Subroutine>,
 ) -> Result<Vec<(Breakpoint, String, u32)>> {
     let mut stack: Vec<(Breakpoint, String, u32)> = Vec::new();
     let mut name = "".to_string();
@@ -171,7 +179,7 @@ fn read_breakpoints(
                 continue;
             }
             Breakpoint::Other(Other::InsideLock) => {
-                name = read_breakpoint_lock_name(core, &subprograms)?;
+                name = read_breakpoint_lock_name(core, &subroutines)?;
                 continue;
             }
             // Ignore everything else for now
@@ -201,7 +209,7 @@ fn read_breakpoint_task_name(core: &mut Core, subprograms: &Vec<Subprogram>) -> 
     Ok(name)
 }
 
-fn read_breakpoint_lock_name(core: &mut Core, subprograms: &Vec<Subprogram>) -> Result<String> {
+fn read_breakpoint_lock_name(core: &mut Core, subroutines: &Vec<Subroutine>) -> Result<String> {
     let lr = core.registers().return_address();
     let lr_val = core.read_core_reg(lr)?;
     println!("LR VALUE IS: {:x?}", lr_val);
