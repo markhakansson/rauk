@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use probe_rs::{Core, MemoryInterface};
+use probe_rs::{Core, MemoryInterface, Probe, Session};
 
 const CYCCNT: u32 = 0xe000_1004;
 
@@ -61,4 +61,16 @@ pub fn read_cycle_counter(core: &mut Core) -> Result<u32> {
     let mut buf = [0u32, 1];
     core.read_32(CYCCNT, &mut buf)?;
     Ok(buf[0])
+}
+
+/// Opens the first probe it can find and return its session
+pub fn open_and_attach_probe(chip_name: String) -> Result<Session> {
+    let probes = Probe::list_all();
+
+    if probes.is_empty() {
+        return Err(anyhow!("There are no debug probes connected"));
+    } else {
+        let probe = probes[0].open()?;
+        Ok(probe.attach(chip_name)?)
+    }
 }

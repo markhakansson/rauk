@@ -1,10 +1,8 @@
 use crate::cli::Flashing;
 
+use crate::utils::probe as core_utils;
 use anyhow::{Context, Result};
-use probe_rs::{
-    flashing::{download_file, Format},
-    Probe,
-};
+use probe_rs::flashing::{download_file, Format};
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
 
@@ -25,9 +23,7 @@ pub fn flash_to_target(opts: Flashing) -> Result<PathBuf> {
     build_replay_harness(&opts, &mut cargo_path, &mut target_dir)
         .context("Failed to build the replay harness")?;
 
-    let probes = Probe::list_all();
-    let probe = probes[0].open()?;
-    let mut session = probe.attach(opts.chip)?;
+    let mut session = core_utils::open_and_attach_probe(opts.chip)?;
 
     // Flash the card with binary
     download_file(&mut session, &target_dir.as_path(), Format::Elf)?;

@@ -1,6 +1,8 @@
+use super::measurement::{Breakpoint, EntryBreakpoint, ExitBreakpoint, OtherBreakpoint};
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
+/// The different types a Trace can be
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TraceType {
     SoftwareTask,
@@ -8,12 +10,12 @@ pub enum TraceType {
     ResourceLock,
 }
 
-impl From<Entry> for TraceType {
-    fn from(e: Entry) -> TraceType {
+impl From<EntryBreakpoint> for TraceType {
+    fn from(e: EntryBreakpoint) -> TraceType {
         match e {
-            Entry::SoftwareTaskStart => TraceType::SoftwareTask,
-            Entry::HardwareTaskStart => TraceType::HardwareTask,
-            Entry::ResourceLockStart => TraceType::ResourceLock,
+            EntryBreakpoint::SoftwareTaskStart => TraceType::SoftwareTask,
+            EntryBreakpoint::HardwareTaskStart => TraceType::HardwareTask,
+            EntryBreakpoint::ResourceLockStart => TraceType::ResourceLock,
         }
     }
 }
@@ -45,65 +47,8 @@ impl Trace {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Breakpoint {
-    Other(Other),
-    Entry(Entry),
-    Exit(Exit),
-}
-
-impl Breakpoint {
-    fn is_exit(&self) -> bool {
-        match self {
-            Breakpoint::Exit(_) => true,
-            _ => false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Entry {
-    HardwareTaskStart = 2,
-    ResourceLockStart = 3,
-    SoftwareTaskStart = 4,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Exit {
-    SoftwareTaskEnd = 251,
-    ResourceLockEnd = 252,
-    HardwareTaskEnd = 253,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Other {
-    Default = 0,
-    InsideTask = 1,
-    Invalid = 100,
-    InsideLock = 254,
-    ReplayStart = 255,
-}
-
-impl From<u8> for Breakpoint {
-    fn from(u: u8) -> Breakpoint {
-        match u {
-            0 => Breakpoint::Other(Other::Default),
-            1 => Breakpoint::Other(Other::InsideTask),
-            2 => Breakpoint::Entry(Entry::HardwareTaskStart),
-            3 => Breakpoint::Entry(Entry::ResourceLockStart),
-            4 => Breakpoint::Entry(Entry::SoftwareTaskStart),
-            251 => Breakpoint::Exit(Exit::SoftwareTaskEnd),
-            252 => Breakpoint::Exit(Exit::ResourceLockEnd),
-            253 => Breakpoint::Exit(Exit::HardwareTaskEnd),
-            254 => Breakpoint::Other(Other::InsideLock),
-            255 => Breakpoint::Other(Other::ReplayStart),
-            _ => Breakpoint::Other(Other::Invalid),
-        }
-    }
-}
-
 pub fn wcet_analysis(mut bkpts: Vec<(Breakpoint, String, u32)>) -> Result<Vec<Trace>> {
-    let mut temp: Vec<Entry> = Vec::new();
+    let mut temp: Vec<EntryBreakpoint> = Vec::new();
     bkpts.reverse();
     let (traces, _) = wcet_rec(&mut bkpts, &mut temp)?;
     Ok(traces)
@@ -117,7 +62,7 @@ pub fn wcet_analysis(mut bkpts: Vec<(Breakpoint, String, u32)>) -> Result<Vec<Tr
 // track of the correct scopes. That is, that for each Entry a corresponding Exit exists.
 fn wcet_rec(
     bkpts: &mut Vec<(Breakpoint, String, u32)>,
-    stack: &mut Vec<Entry>,
+    stack: &mut Vec<EntryBreakpoint>,
 ) -> Result<(Vec<Trace>, (Breakpoint, String, u32))> {
     // This is the main result of this function
     let mut traces: Vec<Trace> = Vec::new();
@@ -194,42 +139,42 @@ mod tests {
     fn test_analysis_nested_and_multiple_locks() {
         let trace: Vec<(Breakpoint, String, u32)> = vec![
             (
-                Breakpoint::Entry(Entry::HardwareTaskStart),
+                Breakpoint::Entry(EntryBreakpoint::HardwareTaskStart),
                 String::from("task1"),
                 0,
             ),
             (
-                Breakpoint::Entry(Entry::ResourceLockStart),
+                Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
                 String::from("res1"),
                 5,
             ),
             (
-                Breakpoint::Entry(Entry::ResourceLockStart),
+                Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
                 String::from("res2"),
                 10,
             ),
             (
-                Breakpoint::Exit(Exit::ResourceLockEnd),
+                Breakpoint::Exit(ExitBreakpoint::ResourceLockEnd),
                 String::from("res2"),
                 15,
             ),
             (
-                Breakpoint::Exit(Exit::ResourceLockEnd),
+                Breakpoint::Exit(ExitBreakpoint::ResourceLockEnd),
                 String::from("res1"),
                 15,
             ),
             (
-                Breakpoint::Entry(Entry::ResourceLockStart),
+                Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
                 String::from("res3"),
                 15,
             ),
             (
-                Breakpoint::Exit(Exit::ResourceLockEnd),
+                Breakpoint::Exit(ExitBreakpoint::ResourceLockEnd),
                 String::from("res3"),
                 20,
             ),
             (
-                Breakpoint::Exit(Exit::HardwareTaskEnd),
+                Breakpoint::Exit(ExitBreakpoint::HardwareTaskEnd),
                 String::from("task1"),
                 20,
             ),
@@ -272,42 +217,42 @@ mod tests {
     fn test_analysis_multiple_locks() {
         let trace: Vec<(Breakpoint, String, u32)> = vec![
             (
-                Breakpoint::Entry(Entry::SoftwareTaskStart),
+                Breakpoint::Entry(EntryBreakpoint::SoftwareTaskStart),
                 String::from("task1"),
                 0,
             ),
             (
-                Breakpoint::Entry(Entry::ResourceLockStart),
+                Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
                 String::from("res1"),
                 5,
             ),
             (
-                Breakpoint::Exit(Exit::ResourceLockEnd),
+                Breakpoint::Exit(ExitBreakpoint::ResourceLockEnd),
                 String::from("res1"),
                 15,
             ),
             (
-                Breakpoint::Entry(Entry::ResourceLockStart),
+                Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
                 String::from("res2"),
                 15,
             ),
             (
-                Breakpoint::Exit(Exit::ResourceLockEnd),
+                Breakpoint::Exit(ExitBreakpoint::ResourceLockEnd),
                 String::from("res2"),
                 20,
             ),
             (
-                Breakpoint::Entry(Entry::ResourceLockStart),
+                Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
                 String::from("res3"),
                 20,
             ),
             (
-                Breakpoint::Exit(Exit::ResourceLockEnd),
+                Breakpoint::Exit(ExitBreakpoint::ResourceLockEnd),
                 String::from("res3"),
                 25,
             ),
             (
-                Breakpoint::Exit(Exit::SoftwareTaskEnd),
+                Breakpoint::Exit(ExitBreakpoint::SoftwareTaskEnd),
                 String::from("task1"),
                 30,
             ),
@@ -350,42 +295,42 @@ mod tests {
     fn test_analysis_nested_locks() {
         let trace: Vec<(Breakpoint, String, u32)> = vec![
             (
-                Breakpoint::Entry(Entry::SoftwareTaskStart),
+                Breakpoint::Entry(EntryBreakpoint::SoftwareTaskStart),
                 String::from("task1"),
                 0,
             ),
             (
-                Breakpoint::Entry(Entry::ResourceLockStart),
+                Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
                 String::from("res1"),
                 5,
             ),
             (
-                Breakpoint::Entry(Entry::ResourceLockStart),
+                Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
                 String::from("res2"),
                 15,
             ),
             (
-                Breakpoint::Entry(Entry::ResourceLockStart),
+                Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
                 String::from("res3"),
                 25,
             ),
             (
-                Breakpoint::Exit(Exit::ResourceLockEnd),
+                Breakpoint::Exit(ExitBreakpoint::ResourceLockEnd),
                 String::from("res3"),
                 35,
             ),
             (
-                Breakpoint::Exit(Exit::ResourceLockEnd),
+                Breakpoint::Exit(ExitBreakpoint::ResourceLockEnd),
                 String::from("res2"),
                 45,
             ),
             (
-                Breakpoint::Exit(Exit::ResourceLockEnd),
+                Breakpoint::Exit(ExitBreakpoint::ResourceLockEnd),
                 String::from("res1"),
                 55,
             ),
             (
-                Breakpoint::Exit(Exit::SoftwareTaskEnd),
+                Breakpoint::Exit(ExitBreakpoint::SoftwareTaskEnd),
                 String::from("task1"),
                 60,
             ),
@@ -423,17 +368,17 @@ mod tests {
     fn test_analysis_invalid_input_size() {
         let trace: Vec<(Breakpoint, String, u32)> = vec![
             (
-                Breakpoint::Entry(Entry::HardwareTaskStart),
+                Breakpoint::Entry(EntryBreakpoint::HardwareTaskStart),
                 String::from("task1"),
                 0,
             ),
             (
-                Breakpoint::Entry(Entry::ResourceLockStart),
+                Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
                 String::from("res1"),
                 5,
             ),
             (
-                Breakpoint::Exit(Exit::HardwareTaskEnd),
+                Breakpoint::Exit(ExitBreakpoint::HardwareTaskEnd),
                 String::from("task1"),
                 10,
             ),
@@ -453,12 +398,12 @@ mod tests {
     fn test_analysis_empty_inner_trace() {
         let trace: Vec<(Breakpoint, String, u32)> = vec![
             (
-                Breakpoint::Entry(Entry::HardwareTaskStart),
+                Breakpoint::Entry(EntryBreakpoint::HardwareTaskStart),
                 String::from("task1"),
                 0,
             ),
             (
-                Breakpoint::Exit(Exit::HardwareTaskEnd),
+                Breakpoint::Exit(ExitBreakpoint::HardwareTaskEnd),
                 String::from("task1"),
                 10,
             ),
@@ -479,12 +424,12 @@ mod tests {
     fn test_analysis_wrong_task_order() {
         let trace: Vec<(Breakpoint, String, u32)> = vec![
             (
-                Breakpoint::Entry(Entry::HardwareTaskStart),
+                Breakpoint::Entry(EntryBreakpoint::HardwareTaskStart),
                 String::from("task1"),
                 0,
             ),
             (
-                Breakpoint::Exit(Exit::SoftwareTaskEnd),
+                Breakpoint::Exit(ExitBreakpoint::SoftwareTaskEnd),
                 String::from("task1"),
                 10,
             ),
@@ -497,12 +442,12 @@ mod tests {
     fn test_analysis_wrong_lock_order() {
         let trace: Vec<(Breakpoint, String, u32)> = vec![
             (
-                Breakpoint::Entry(Entry::ResourceLockStart),
+                Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
                 String::from("res1"),
                 0,
             ),
             (
-                Breakpoint::Exit(Exit::SoftwareTaskEnd),
+                Breakpoint::Exit(ExitBreakpoint::SoftwareTaskEnd),
                 String::from("task1"),
                 10,
             ),

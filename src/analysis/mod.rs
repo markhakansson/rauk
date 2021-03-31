@@ -2,15 +2,14 @@ mod analysis;
 mod dwarf;
 mod measurement;
 
-use self::dwarf::{Subprogram, Subroutine};
 use crate::cli::Analysis;
-use crate::utils::{klee::parse_ktest_files, probe as core_utils};
-use analysis::{Breakpoint, Other};
+use crate::utils::{klee, probe as core_utils};
+use analysis::Trace;
 use anyhow::{anyhow, Context, Result};
 use dwarf::ObjectLocationMap;
 use ktest_parser::KTest;
 use object::Object;
-use probe_rs::{Core, MemoryInterface, Probe};
+use probe_rs::{Core, MemoryInterface};
 use std::{borrow, fs};
 
 const HALT_TIMEOUT_SECONDS: u64 = 5;
@@ -35,36 +34,40 @@ pub fn analyze(a: Analysis) -> Result<()> {
     // Create `EndianSlice`s for all of the sections.
     let dwarf = dwarf_cow.borrow(&borrow_section);
 
-    let ktests = parse_ktest_files(&a.ktests)?;
+    let ktests = klee::parse_ktest_files(&a.ktests)?;
     let addr = dwarf::get_replay_addresses(&dwarf)?;
     let subprograms = dwarf::get_subprograms(&dwarf)?;
     let subroutines = dwarf::get_subroutines(&dwarf)?;
-    println!("------------KTESTS------------------");
-    println!("{:#x?}", ktests);
-    println!("------------GLOBAL VARS-------------");
-    println!("{:#x?}", addr);
-    println!("------------SUBPROGRAMS-------------");
-    println!("{:#x?}", &subprograms);
-    println!("------------SUBROUTINES-------------");
-    println!("{:#x?}", &subroutines);
 
-    let probes = Probe::list_all();
-    let probe = probes[0].open()?;
-    let mut session = probe.attach(a.chip)?;
-
+    let mut session = core_utils::open_and_attach_probe(a.chip)?;
     let mut core = session.core(0)?;
+
+    let mut traces: Vec<Trace> = Vec::new();
 
     // Analysis
     for ktest in ktests {
-        println!("-------------------------------------------------------------");
         // Continue until reaching BKPT 255 (replaystart)
         run_to_replay_start(&mut core).context("Could not continue to replay start")?;
         write_replay_objects(&mut core, &ktest, &addr)
             .with_context(|| format!("Could not replay with KTest: {:?}", &ktest))?;
-        let bkpts = read_breakpoints(&mut core, &subprograms, &subroutines)?;
-        println!("{:#?}", bkpts);
-        let trace = analysis::wcet_analysis(bkpts);
-        println!("{:#?}", trace);
+        let bkpts = measurement::read_breakpoints(&mut core, &subprograms, &subroutines)?;
+        let mut trace = match analysis::wcet_analysis(bkpts) {
+            Ok(trace) => trace,
+            Err(_) => continue,
+        };
+        traces.append(&mut trace);
+    }
+
+    println!("{:#?}", traces);
+
+    match a.output {
+        Some(dir) => {
+            let mut path = dir.clone();
+            path.push("rauk.json");
+            let serialized = serde_json::to_string(&traces)?;
+            fs::write(path, serialized)?;
+        }
+        None => (),
     }
 
     Ok(())
@@ -78,7 +81,7 @@ fn run_to_replay_start(core: &mut Core) -> Result<()> {
     loop {
         let imm = core_utils::read_breakpoint_value(core)?;
         // Ready to analyze when reaching this breakpoint
-        if imm == Other::ReplayStart as u8 {
+        if imm == measurement::OtherBreakpoint::ReplayStart as u8 {
             break;
         }
         // Should there be other breakpoints we continue past them
@@ -108,93 +111,4 @@ fn write_replay_objects(
         }
     }
     Ok(())
-}
-
-/// Read all breakpoints and the cycle counter at their positions
-/// between the ReplayStart breakpoints and return them as a list
-fn read_breakpoints(
-    core: &mut Core,
-    subprograms: &Vec<Subprogram>,
-    subroutines: &Vec<Subroutine>,
-) -> Result<Vec<(Breakpoint, String, u32)>> {
-    let mut stack: Vec<(Breakpoint, String, u32)> = Vec::new();
-    let name = "<unknown>".to_string();
-
-    loop {
-        core_utils::run(core).context("Could not continue from replay start")?;
-        core.wait_for_core_halted(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))?;
-        if !core_utils::breakpoint_at_pc(core)? {
-            return Err(anyhow!(
-                "Core halted, but not due to breakpoint. Can't continue with analysis."
-            ));
-        }
-
-        // Read breakpoint immediate value
-        let imm = Breakpoint::from(core_utils::read_breakpoint_value(core)?);
-        match imm {
-            // On ReplayStart the loop is complete
-            Breakpoint::Other(Other::ReplayStart) => break,
-            // Save the name and continue to the next loop iteration
-            Breakpoint::Other(Other::InsideTask) => {
-                let name = read_breakpoint_task_name(core, &subprograms)?;
-                let (b, _, u) = stack.pop().unwrap();
-                stack.push((b, name, u));
-
-                continue;
-            }
-            Breakpoint::Other(Other::InsideLock) => {
-                let name = read_breakpoint_lock_name(core, &subroutines)?;
-                let (b, _, u) = stack.pop().unwrap();
-                stack.push((b, name, u));
-
-                continue;
-            }
-            // Ignore everything else for now
-            _ => (),
-        }
-
-        let cyccnt = core_utils::read_cycle_counter(core)?;
-        stack.push((imm, name.clone(), cyccnt));
-    }
-
-    Ok(stack)
-}
-
-/// Tries to read the name of the current scope of the breakpoint from DWARF
-fn read_breakpoint_task_name(core: &mut Core, subprograms: &Vec<Subprogram>) -> Result<String> {
-    let lr = core.registers().return_address();
-    let lr_val = core.read_core_reg(lr)?;
-
-    let in_range = dwarf::get_subprograms_in_range(subprograms, lr_val as u64)?;
-    let optimal = dwarf::get_shortest_range_subprogram(&in_range)?;
-
-    println!("------------SUBPROGRAMS IN RANGE-------------");
-    println!("{:#x?}", &in_range);
-    println!("------------OPTIMAL SUBPROGRAM---------------");
-    println!("{:#x?}", &optimal);
-
-    let name = match optimal {
-        Some(s) => s.name,
-        None => "<unknown>".to_string(),
-    };
-    Ok(name)
-}
-
-fn read_breakpoint_lock_name(core: &mut Core, subroutines: &Vec<Subroutine>) -> Result<String> {
-    let lr = core.registers().return_address();
-    let lr_val = core.read_core_reg(lr)?;
-
-    let in_range = dwarf::get_subroutines_in_range(subroutines, lr_val as u64)?;
-    let optimal = dwarf::get_shortest_range_subroutine(&in_range)?;
-
-    println!("------------SUBROUTINES IN RANGE-------------");
-    println!("{:#x?}", &in_range);
-    println!("------------OPTIMAL SUBROUTINE---------------");
-    println!("{:#x?}", &optimal);
-
-    let name = match optimal {
-        Some(s) => s.name,
-        None => "<unknown>".to_string(),
-    };
-    Ok(name)
 }
