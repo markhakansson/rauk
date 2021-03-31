@@ -1,11 +1,12 @@
 use crate::cli::Generation;
+use anyhow::{anyhow, Context, Result};
 use glob::glob;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 
 /// Builds the test harness, then generates test vectors from it using KLEE.
 /// Returns the path to where KLEE generated its tests.
-pub fn generate_klee_tests(tg: Generation) -> Result<PathBuf, std::io::Error> {
+pub fn generate_klee_tests(tg: Generation) -> Result<PathBuf> {
     let project_dir = match tg.path.clone() {
         Some(path) => path,
         None => PathBuf::from("./"),
@@ -17,14 +18,18 @@ pub fn generate_klee_tests(tg: Generation) -> Result<PathBuf, std::io::Error> {
     cargo_path.push("Cargo.toml");
 
     // Build the project
-    build_test_harness(&tg, &mut cargo_path, &mut target_dir, &mut project_name)?;
+    build_test_harness(&tg, &mut cargo_path, &mut target_dir, &mut project_name)
+        .context("Failed to build the test harness")?;
 
-    let ll = fetch_latest_ll_file(&mut target_dir, &mut project_name);
+    let ll = fetch_latest_ll_file(&mut target_dir, &mut project_name)
+        .context("Failed to retrieve the test harness' .ll file")?;
 
     // Run KLEE
     let mut klee = Command::new("klee");
-    klee.arg("--emit-all-errors").arg(ll.unwrap());
+    klee.arg("--emit-all-errors").arg(ll);
     klee.stdout(Stdio::null()).status()?;
+
+    target_dir.push("klee-last/");
 
     Ok(target_dir)
 }
@@ -73,21 +78,32 @@ fn build_test_harness(
     cargo.status()
 }
 
-fn fetch_latest_ll_file(target_dir: &mut PathBuf, project_name: &mut String) -> Option<PathBuf> {
-    let glob_path =
-        target_dir.clone().to_str().unwrap().to_owned() + &project_name.replace("-", "_") + "*.ll";
-    let ll_glob = glob(glob_path.as_str()).expect("Failed to read glob pattern");
-    let mut ll = None;
+/// Returns the path of the latest accessed .ll file inside the given target directory.
+fn fetch_latest_ll_file(target_dir: &mut PathBuf, project_name: &mut String) -> Result<PathBuf> {
+    let target_dir_clone = target_dir.clone();
+    let target_dir_str = match target_dir_clone.to_str() {
+        Some(string) => string,
+        None => {
+            return Err(anyhow!(
+                "Could not convert directory {:?} to str",
+                target_dir
+            ))
+        }
+    };
+
+    let glob_path = target_dir_str.to_owned() + &project_name.replace("-", "_") + "*.ll";
+    let ll_glob = glob(glob_path.as_str()).context("Failed to read glob pattern")?;
+    let mut ll_opt = None;
     for path in ll_glob {
         match path {
             Ok(p) => {
-                if ll.is_none() {
-                    ll = Some(p);
+                if ll_opt.is_none() {
+                    ll_opt = Some(p);
                 } else {
-                    let md = p.metadata().unwrap();
-                    let ll_md = ll.clone().unwrap().metadata().unwrap();
-                    if ll_md.accessed().unwrap() > md.accessed().unwrap() {
-                        ll = Some(p);
+                    let md = p.metadata()?;
+                    let ll_md = ll_opt.clone().unwrap().metadata()?;
+                    if ll_md.accessed()? > md.accessed()? {
+                        ll_opt = Some(p);
                     }
                 }
             }
@@ -95,5 +111,8 @@ fn fetch_latest_ll_file(target_dir: &mut PathBuf, project_name: &mut String) -> 
         }
     }
 
-    ll
+    match ll_opt {
+        Some(ll) => Ok(ll),
+        None => Err(anyhow!("No .ll files found in directory {:?}", target_dir)),
+    }
 }

@@ -52,10 +52,10 @@ pub struct Flashing {
     /// Build executable in release mode.
     #[structopt(short, long)]
     pub release: bool,
-    // The target architecture to build the executable for.
+    /// The target architecture to build the executable for.
     #[structopt(short, long)]
     pub target: Option<String>,
-    // The name of the chip to flash to.
+    /// The name of the chip to flash to.
     #[structopt(short, long)]
     pub chip: String,
 }
@@ -68,10 +68,16 @@ pub struct Analysis {
     pub path: Option<PathBuf>,
     /// Path to DWARF.
     #[structopt(short, long, parse(from_os_str))]
-    pub dwarf: Option<PathBuf>,
+    pub dwarf: PathBuf,
     /// Path to KLEE tests.
     #[structopt(short, long, parse(from_os_str))]
-    pub ktests: Option<PathBuf>,
+    pub ktests: PathBuf,
+    /// The name of the chip to flash to.
+    #[structopt(short, long)]
+    pub chip: String,
+    /// Output directory of traces as JSON
+    #[structopt(short, long)]
+    pub output: Option<PathBuf>,
 }
 
 /// Runs all commands in one go.
@@ -89,10 +95,10 @@ pub struct All {
     /// Build executable in release mode.
     #[structopt(short, long)]
     pub release: bool,
-    // The target architecture to build the executable for.
+    /// The target architecture to build the executable for.
     #[structopt(short, long)]
     pub target: Option<String>,
-    // The name of the chip to flash to.
+    /// The name of the chip to flash to.
     #[structopt(short, long)]
     pub chip: String,
 }
