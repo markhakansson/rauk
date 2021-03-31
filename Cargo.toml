@@ -19,4 +19,3 @@ memmap = "0.7.0"
 toml = "0.5.8"
 serde = { version = "1.0", features = ["derive"] }
 rustc-demangle = "0.1"
-regex = "1"

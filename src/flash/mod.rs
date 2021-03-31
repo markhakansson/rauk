@@ -1,12 +1,14 @@
 use crate::cli::Flashing;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use probe_rs::{
     flashing::{download_file, Format},
     Probe,
 };
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
+
+const HALT_TIMEOUT_SECONDS: u64 = 5;
 
 /// Builds the replay harness and flashes it to the target hardware.
 /// Returns the path to the built executable.
@@ -20,32 +22,28 @@ pub fn flash_to_target(opts: Flashing) -> Result<PathBuf> {
     target_dir.push("target/");
     cargo_path.push("Cargo.toml");
 
-    build_replay_harness(&opts, &mut cargo_path, &mut target_dir)?;
+    build_replay_harness(&opts, &mut cargo_path, &mut target_dir)
+        .context("Failed to build the replay harness")?;
 
-    // Get a list of all available debug probes.
     let probes = Probe::list_all();
-
-    // Use the first probe found.
     let probe = probes[0].open()?;
-
-    // Attach to a chip.
     let mut session = probe.attach(opts.chip)?;
 
     // Flash the card with binary
     download_file(&mut session, &target_dir.as_path(), Format::Elf)?;
 
     // Reset the core and halt
-    {
-        let mut core = session.core(0)?;
-        core.reset_and_halt(std::time::Duration::from_secs(1))?;
-    }
+    let mut core = session.core(0)?;
+    core.reset_and_halt(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))?;
 
     Ok(target_dir)
 }
 
+/// Builds the replay harness by setting the correct features for all patched
+/// crates.
 fn build_replay_harness(
     a: &Flashing,
-    _cargo_path: &mut PathBuf,
+    cargo_path: &mut PathBuf,
     target_dir: &mut PathBuf,
 ) -> Result<ExitStatus, std::io::Error> {
     let mut cargo = Command::new("cargo");
@@ -74,9 +72,9 @@ fn build_replay_harness(
     }
     target_dir.push(name);
 
-    cargo.args(&["--features", "klee-replay"]);
-    // Ignore manifest path for now
-    //.args(&["--manifest-path", cargo_path.to_str().unwrap()]);
+    cargo
+        .args(&["--features", "klee-replay"])
+        .args(&["--manifest-path", cargo_path.to_str().unwrap()]);
 
     cargo.status()
 }

@@ -7,11 +7,9 @@ use gimli::{
     RunTimeEndian, UnitHeader,
 };
 use object::{Object, ObjectSection};
-use regex::Regex;
 use rustc_demangle::demangle;
+use std::borrow;
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::{borrow, fs};
 
 pub type ObjectLocationMap = HashMap<String, Option<u64>>;
 
@@ -160,7 +158,7 @@ fn parse_object_location(
 
     if location.is_some() {
         let replay = ObjectLocation {
-            name: name,
+            name,
             address: location,
         };
         return Ok(Some(replay));
@@ -190,21 +188,6 @@ pub fn get_subprograms_in_range(
     for subprogram in subprograms {
         if subprogram.in_range(address) {
             ok.push(subprogram.clone());
-        }
-    }
-
-    Ok(ok)
-}
-
-pub fn get_subroutines_in_range(
-    subroutines: &Vec<Subroutine>,
-    address: u64,
-) -> Result<Vec<Subroutine>> {
-    let mut ok: Vec<Subroutine> = vec![];
-
-    for subroutine in subroutines {
-        if subroutine.in_range(address) {
-            ok.push(subroutine.clone());
         }
     }
 
@@ -286,7 +269,7 @@ fn parse_subprogram(
     match (low_pc, high_pc) {
         (Some(low), Some(high)) => {
             subprogram = Some(Subprogram {
-                name: name,
+                name,
                 low_pc: low,
                 high_pc: low + high,
             })
@@ -302,14 +285,28 @@ pub fn get_subroutines(dwarf: &Dwarf<EndianSlice<RunTimeEndian>>) -> Result<Vec<
     let mut iter = dwarf.units();
     let mut subroutines: Vec<Subroutine> = Vec::new();
 
-    let re = Regex::new(r"<impl rtic_core::Mutex for (.*?)>::lock")?;
-
     while let Some(header) = iter.next()? {
         let unit = dwarf.unit(header)?;
         let mut result = parse_inlined_subroutines(dwarf, &unit, &header)?;
         subroutines.append(&mut result);
     }
     Ok(subroutines)
+}
+
+/// Returns a list of subroutines where the given address is in range.
+pub fn get_subroutines_in_range(
+    subroutines: &Vec<Subroutine>,
+    address: u64,
+) -> Result<Vec<Subroutine>> {
+    let mut ok: Vec<Subroutine> = vec![];
+
+    for subroutine in subroutines {
+        if subroutine.in_range(address) {
+            ok.push(subroutine.clone());
+        }
+    }
+
+    Ok(ok)
 }
 
 /// Returns the subprogram in the given list with the shortest range.
@@ -365,7 +362,7 @@ fn parse_inlined_subroutine(
             match attr.value() {
                 AttributeValue::UnitRef(ur) => {
                     let origin = header.entry(&abbrv, ur)?;
-                    let origin_name = parse_abstract_origin(dwarf, header, &origin)?;
+                    let origin_name = parse_abstract_origin(dwarf, &origin)?;
                     name = parse_resource_name_from_abstract(origin_name);
                     // name = function to split ehre
                 }
@@ -386,7 +383,7 @@ fn parse_inlined_subroutine(
 
     let subroutine = match (name, low_pc, high_pc) {
         (Some(name), Some(low), Some(high)) => Some(Subroutine {
-            name: name,
+            name,
             low_pc: low,
             high_pc: low + high,
         }),
@@ -398,12 +395,10 @@ fn parse_inlined_subroutine(
 
 fn parse_resource_name_from_abstract(unmangled_name: String) -> Option<String> {
     let mut v: Vec<&str> = unmangled_name.split("impl rtic_core::Mutex for ").collect();
-    println!("v {:?}", &v);
     if v.len() > 1 {
         match v.pop() {
             Some(string) => {
                 let newsubstr: Vec<&str> = string.split(">::lock").collect();
-                println!("newsubstr: {:?}", &newsubstr);
                 if newsubstr.is_empty() {
                     None
                 } else {
@@ -419,7 +414,6 @@ fn parse_resource_name_from_abstract(unmangled_name: String) -> Option<String> {
 
 fn parse_abstract_origin(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
-    header: &UnitHeader<EndianSlice<RunTimeEndian>>,
     entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
 ) -> Result<String> {
     let mut attrs = entry.attrs();
@@ -443,69 +437,4 @@ fn parse_abstract_origin(
     }
 
     Ok(name)
-}
-
-fn _parse_register_location(
-    entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
-    dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
-    header: &UnitHeader<EndianSlice<RunTimeEndian>>,
-) -> Result<Option<ObjectLocation>> {
-    let mut attrs = entry.attrs();
-    let mut name: String = String::new();
-    let mut location: Option<u64> = None;
-    while let Some(attr) = attrs.next()? {
-        if attr.name() == gimli::constants::DW_AT_name {
-            match attr.value() {
-                AttributeValue::DebugStrRef(offset) => {
-                    name = dwarf
-                        .string(offset)
-                        .unwrap()
-                        .to_string()
-                        .unwrap()
-                        .to_string();
-                    println!("name: {:?}", name);
-                }
-                _ => (),
-            }
-        } else if attr.name() == gimli::constants::DW_AT_location {
-            println!("attribute: {:?}", attr.value());
-            match attr.value() {
-                AttributeValue::Exprloc(e) => {
-                    let mut eval = e.evaluation(header.encoding());
-                    let mut result = eval.evaluate()?;
-                    println!("result: {:?}", result);
-                    match result {
-                        EvaluationResult::RequiresRegister {
-                            register,
-                            base_type,
-                        } => {}
-                        _ => (),
-                    }
-
-                    if result == EvaluationResult::Complete {
-                        let eval = eval.result();
-                        let loc = eval.first().unwrap().location;
-                        println!("location: {:?}", loc);
-                        match loc {
-                            Location::Address { address: a } => location = Some(a),
-                            _ => (),
-                        }
-                    }
-                }
-                _ => (),
-            }
-        // Ignore external objects
-        } else if attr.name() == gimli::constants::DW_AT_external {
-            break;
-        }
-    }
-
-    if location.is_some() {
-        let replay = ObjectLocation {
-            name: name,
-            address: location,
-        };
-        return Ok(Some(replay));
-    }
-    Ok(None)
 }

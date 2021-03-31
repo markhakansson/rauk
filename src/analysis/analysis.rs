@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TraceType {
     SoftwareTask,
     HardwareTask,
@@ -17,7 +18,8 @@ impl From<Entry> for TraceType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// The RAUK analysis trace. Contains information about the test replays.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Trace {
     /// The name of the object.
     pub name: String,
@@ -51,23 +53,9 @@ pub enum Breakpoint {
 }
 
 impl Breakpoint {
-    fn is_entry(&self) -> bool {
-        match self {
-            Breakpoint::Entry(_) => true,
-            _ => false,
-        }
-    }
-
     fn is_exit(&self) -> bool {
         match self {
             Breakpoint::Exit(_) => true,
-            _ => false,
-        }
-    }
-
-    fn is_other(&self) -> bool {
-        match self {
-            Breakpoint::Other(_) => true,
             _ => false,
         }
     }

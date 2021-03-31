@@ -1,5 +1,6 @@
 mod analysis;
 mod dwarf;
+mod measurement;
 
 use self::dwarf::{Subprogram, Subroutine};
 use crate::cli::Analysis;
@@ -7,7 +8,6 @@ use crate::utils::{klee::parse_ktest_files, probe as core_utils};
 use analysis::{Breakpoint, Other};
 use anyhow::{anyhow, Context, Result};
 use dwarf::ObjectLocationMap;
-use gimli::{read::Dwarf, EndianSlice, RunTimeEndian};
 use ktest_parser::KTest;
 use object::Object;
 use probe_rs::{Core, MemoryInterface, Probe};
@@ -35,16 +35,21 @@ pub fn analyze(a: Analysis) -> Result<()> {
     // Create `EndianSlice`s for all of the sections.
     let dwarf = dwarf_cow.borrow(&borrow_section);
 
-    let ktests = parse_ktest_files(&a.ktests);
+    let ktests = parse_ktest_files(&a.ktests)?;
     let addr = dwarf::get_replay_addresses(&dwarf)?;
     let subprograms = dwarf::get_subprograms(&dwarf)?;
     let subroutines = dwarf::get_subroutines(&dwarf)?;
+    println!("------------KTESTS------------------");
     println!("{:#x?}", ktests);
+    println!("------------GLOBAL VARS-------------");
     println!("{:#x?}", addr);
+    println!("------------SUBPROGRAMS-------------");
+    println!("{:#x?}", &subprograms);
+    println!("------------SUBROUTINES-------------");
+    println!("{:#x?}", &subroutines);
 
     let probes = Probe::list_all();
     let probe = probes[0].open()?;
-
     let mut session = probe.attach(a.chip)?;
 
     let mut core = session.core(0)?;
@@ -62,47 +67,6 @@ pub fn analyze(a: Analysis) -> Result<()> {
         println!("{:#?}", trace);
     }
 
-    Ok(())
-}
-
-pub fn test_dwarf(a: Analysis) -> Result<()> {
-    let file = fs::File::open(&a.dwarf)?;
-    let mmap = unsafe { memmap::Mmap::map(&file)? };
-    let object = object::File::parse(&*mmap)?;
-    let endian = if object.is_little_endian() {
-        gimli::RunTimeEndian::Little
-    } else {
-        gimli::RunTimeEndian::Big
-    };
-    let dwarf_cow = dwarf::load_dwarf_from_file(object)?;
-
-    // Borrow a `Cow<[u8]>` to create an `EndianSlice`.
-    let borrow_section: &dyn for<'a> Fn(
-        &'a borrow::Cow<[u8]>,
-    ) -> gimli::EndianSlice<'a, gimli::RunTimeEndian> =
-        &|section| gimli::EndianSlice::new(&*section, endian);
-
-    // Create `EndianSlice`s for all of the sections.
-    let dwarf = dwarf_cow.borrow(&borrow_section);
-
-    let subprograms = dwarf::get_subprograms(&dwarf)?;
-    //println!("{:#?}", &subprograms);
-    //let addr = 0x800020d;
-    //let in_range = dwarf::get_subprograms_in_range(&subprograms, addr)?;
-
-    //println!("{:#?}", &in_range);
-    // println!(
-    //     "Shortest range: {:#?}",
-    //     dwarf::get_shortest_range_subprogram(&in_range)?
-    // );
-
-    println!("----- INLINED SUBROUTINES -----");
-    let subroutines = dwarf::get_subroutines(&dwarf)?;
-    println!("{:#?}", &subroutines);
-    let tst_addr = 0x0800_0277;
-    let subroutines_in_range = dwarf::get_subroutines_in_range(&subroutines, tst_addr);
-    println!("----- IN RANGE INLINED SUBROUTINES -----");
-    println!("{:#?}", subroutines_in_range);
     Ok(())
 }
 
@@ -154,7 +118,7 @@ fn read_breakpoints(
     subroutines: &Vec<Subroutine>,
 ) -> Result<Vec<(Breakpoint, String, u32)>> {
     let mut stack: Vec<(Breakpoint, String, u32)> = Vec::new();
-    let mut name = "".to_string();
+    let name = "<unknown>".to_string();
 
     loop {
         core_utils::run(core).context("Could not continue from replay start")?;
@@ -204,10 +168,14 @@ fn read_breakpoint_task_name(core: &mut Core, subprograms: &Vec<Subprogram>) -> 
     let in_range = dwarf::get_subprograms_in_range(subprograms, lr_val as u64)?;
     let optimal = dwarf::get_shortest_range_subprogram(&in_range)?;
 
-    println!("LR VALUE IS: {:x?}", lr_val);
+    println!("------------SUBPROGRAMS IN RANGE-------------");
+    println!("{:#x?}", &in_range);
+    println!("------------OPTIMAL SUBPROGRAM---------------");
+    println!("{:#x?}", &optimal);
+
     let name = match optimal {
         Some(s) => s.name,
-        None => "".to_string(),
+        None => "<unknown>".to_string(),
     };
     Ok(name)
 }
@@ -219,10 +187,14 @@ fn read_breakpoint_lock_name(core: &mut Core, subroutines: &Vec<Subroutine>) -> 
     let in_range = dwarf::get_subroutines_in_range(subroutines, lr_val as u64)?;
     let optimal = dwarf::get_shortest_range_subroutine(&in_range)?;
 
-    println!("LR VALUE IS: {:x?}", lr_val);
+    println!("------------SUBROUTINES IN RANGE-------------");
+    println!("{:#x?}", &in_range);
+    println!("------------OPTIMAL SUBROUTINE---------------");
+    println!("{:#x?}", &optimal);
+
     let name = match optimal {
         Some(s) => s.name,
-        None => "".to_string(),
+        None => "<unknown>".to_string(),
     };
     Ok(name)
 }
