@@ -72,6 +72,7 @@ fn run_all(all: cli::All) -> Result<()> {
         dwarf: dwarf_path,
         ktests: klee_path,
         chip: all.chip.clone(),
+        output: None,
     };
     analyze(analysis)?;
 
