@@ -56,6 +56,7 @@ fn run_all(all: cli::All) -> Result<()> {
         bin: all.bin.clone(),
         example: all.example.clone(),
         release: all.release.clone(),
+        emit_all_errors: all.emit_all_errors.clone(),
     };
     let flash = cli::Flashing {
         path: all.path.clone(),

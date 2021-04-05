@@ -35,6 +35,9 @@ pub struct Generation {
     /// Generate tests in release mode.
     #[structopt(short, long)]
     pub release: bool,
+    /// Emit all KLEE errors.
+    #[structopt(long)]
+    pub emit_all_errors: bool,
 }
 
 /// Flashes a binary to the target platform, modified to allow Rauk analysis
@@ -101,6 +104,9 @@ pub struct All {
     /// The name of the chip to flash to.
     #[structopt(short, long)]
     pub chip: String,
+    /// Emit all KLEE errors.
+    #[structopt(long)]
+    pub emit_all_errors: bool,
 }
 
 trait Config {

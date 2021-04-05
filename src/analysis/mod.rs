@@ -58,8 +58,6 @@ pub fn analyze(a: Analysis) -> Result<()> {
         traces.append(&mut trace);
     }
 
-    println!("{:#?}", traces);
-
     match a.output {
         Some(dir) => {
             let mut path = dir.clone();
@@ -67,7 +65,9 @@ pub fn analyze(a: Analysis) -> Result<()> {
             let serialized = serde_json::to_string(&traces)?;
             fs::write(path, serialized)?;
         }
-        None => (),
+        None => {
+            println!("{:#?}", traces);
+        }
     }
 
     Ok(())
