@@ -27,8 +27,9 @@ pub fn generate_klee_tests(tg: Generation) -> Result<PathBuf> {
     // Run KLEE
     let mut klee = Command::new("klee");
     if tg.emit_all_errors {
-        klee.arg("--emit-all-errors").arg(ll);
+        klee.arg("--emit-all-errors");
     }
+    klee.arg(ll);
     klee.stdout(Stdio::null()).status()?;
 
     target_dir.push("klee-last/");
