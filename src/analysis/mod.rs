@@ -49,7 +49,7 @@ pub fn analyze(a: Analysis) -> Result<()> {
         // Continue until reaching BKPT 255 (replaystart)
         run_to_replay_start(&mut core).context("Could not continue to replay start")?;
         write_replay_objects(&mut core, &ktest, &addr)
-            .with_context(|| format!("Could not replay with KTest: {:?}", &ktest))?;
+            .with_context(|| format!("Could not write to memory with KTest: {:?}", &ktest))?;
         let bkpts = measurement::read_breakpoints(&mut core, &subprograms, &subroutines)?;
         let mut trace = match analysis::wcet_analysis(bkpts) {
             Ok(trace) => trace,
@@ -58,8 +58,6 @@ pub fn analyze(a: Analysis) -> Result<()> {
         traces.append(&mut trace);
     }
 
-    println!("{:#?}", traces);
-
     match a.output {
         Some(dir) => {
             let mut path = dir.clone();
@@ -67,7 +65,9 @@ pub fn analyze(a: Analysis) -> Result<()> {
             let serialized = serde_json::to_string(&traces)?;
             fs::write(path, serialized)?;
         }
-        None => (),
+        None => {
+            println!("{:#?}", traces);
+        }
     }
 
     Ok(())
@@ -106,7 +106,11 @@ fn write_replay_objects(
             }
             None => {
                 // Should log a warning here instead
-                return Err(anyhow!("Address was not found"));
+                // return Err(anyhow!(
+                //     "Address was not found for KTestObject: {:?}",
+                //     &test
+                // ));
+                ()
             }
         }
     }
