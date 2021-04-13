@@ -637,6 +637,7 @@ dependencies = [
 [[package]]
 name = "ktest-parser"
 version = "0.1.0"
+source = "git+https://github.com/markhakansson/ktest-parser#ef1d3716f38d6b08df2d328fe5d6ac230ad26c8f"
 dependencies = [
  "anyhow",
  "nom",
