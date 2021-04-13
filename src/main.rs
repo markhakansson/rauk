@@ -32,14 +32,15 @@ fn match_cli_opts() -> Result<()> {
 
     match opts.cmd {
         Command::Generate(g) => {
-            let path = generate::generate_klee_tests(g)?;
+            let path =
+                generate::generate_klee_tests(g).context("Failed to execute generate command")?;
             println!("{:#?}", path);
         }
         Command::Analyze(a) => {
-            analysis::analyze(a)?;
+            analysis::analyze(a).context("Failed to execute analyze command")?;
         }
         Command::Flash(f) => {
-            let path = flash::flash_to_target(f)?;
+            let path = flash::flash_to_target(f).context("Failed to execute flash command")?;
             println!("{:#?}", path);
         }
         Command::All(a) => {
