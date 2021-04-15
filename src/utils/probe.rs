@@ -64,7 +64,7 @@ pub fn read_cycle_counter(core: &mut Core) -> Result<u32> {
 }
 
 /// Opens the first probe it can find and return its session
-pub fn open_and_attach_probe(chip_name: String) -> Result<Session> {
+pub fn open_and_attach_probe(chip_name: &String) -> Result<Session> {
     let probes = Probe::list_all();
 
     if probes.is_empty() {

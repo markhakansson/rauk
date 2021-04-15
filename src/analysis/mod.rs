@@ -5,7 +5,7 @@ mod measurement;
 use crate::cli::Analysis;
 use crate::utils::{klee, probe as core_utils};
 use analysis::Trace;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use dwarf::ObjectLocationMap;
 use ktest_parser::KTest;
 use object::Object;
@@ -14,7 +14,7 @@ use std::{borrow, fs};
 
 const HALT_TIMEOUT_SECONDS: u64 = 5;
 
-pub fn analyze(a: Analysis) -> Result<()> {
+pub fn analyze(a: &Analysis) -> Result<()> {
     let file = fs::File::open(&a.dwarf)?;
     let mmap = unsafe { memmap::Mmap::map(&file)? };
     let object = object::File::parse(&*mmap)?;
@@ -39,7 +39,7 @@ pub fn analyze(a: Analysis) -> Result<()> {
     let subprograms = dwarf::get_subprograms(&dwarf)?;
     let subroutines = dwarf::get_subroutines(&dwarf)?;
 
-    let mut session = core_utils::open_and_attach_probe(a.chip)?;
+    let mut session = core_utils::open_and_attach_probe(&a.chip)?;
     let mut core = session.core(0)?;
 
     let mut traces: Vec<Trace> = Vec::new();
@@ -58,7 +58,7 @@ pub fn analyze(a: Analysis) -> Result<()> {
         traces.append(&mut trace);
     }
 
-    match a.output {
+    match &a.output {
         Some(dir) => {
             let mut path = dir.clone();
             path.push("rauk.json");
