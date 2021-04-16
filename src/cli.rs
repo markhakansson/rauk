@@ -74,9 +74,6 @@ pub struct Analysis {
     /// The name of the chip to flash to.
     #[structopt(short, long)]
     pub chip: String,
-    /// Output directory of traces as JSON
-    #[structopt(short, long)]
-    pub output: Option<PathBuf>,
 }
 
 pub fn get_cli_opts() -> CliOptions {

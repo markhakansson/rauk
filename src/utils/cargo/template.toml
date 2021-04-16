@@ -1,5 +1,8 @@
+[dependencies.panic-klee]
+git = "https://gitlab.henriktjader.com/pln/panic-klee.git"
+
 [dependencies.klee-rs]
-git = "https://github.com/markhakansson/klee-rs"
+git = "https://github.com/markhakansson/klee-rs.git"
 version = "0.1"
 optional = true
 

@@ -3,6 +3,7 @@ mod dwarf;
 mod measurement;
 
 use crate::cli::Analysis;
+use crate::metadata::RaukInfo;
 use crate::utils::{klee, probe as core_utils};
 use analysis::Trace;
 use anyhow::{Context, Result};
@@ -10,11 +11,12 @@ use dwarf::ObjectLocationMap;
 use ktest_parser::KTest;
 use object::Object;
 use probe_rs::{Core, MemoryInterface};
+use std::path::PathBuf;
 use std::{borrow, fs};
 
 const HALT_TIMEOUT_SECONDS: u64 = 5;
 
-pub fn analyze(a: &Analysis) -> Result<()> {
+pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
     let file = fs::File::open(&a.dwarf)?;
     let mmap = unsafe { memmap::Mmap::map(&file)? };
     let object = object::File::parse(&*mmap)?;
@@ -58,19 +60,13 @@ pub fn analyze(a: &Analysis) -> Result<()> {
         traces.append(&mut trace);
     }
 
-    match &a.output {
-        Some(dir) => {
-            let mut path = dir.clone();
-            path.push("rauk.json");
-            let serialized = serde_json::to_string(&traces)?;
-            fs::write(path, serialized)?;
-        }
-        None => {
-            println!("{:#?}", traces);
-        }
-    }
+    println!("{:#?}", traces);
 
-    Ok(())
+    let mut path = metadata.project_directory.clone();
+    path.push("rauk.json");
+    let serialized = serde_json::to_string(&traces)?;
+    fs::write(&path, serialized)?;
+    Ok(Some(path))
 }
 
 /// Runs to where the replay starts.

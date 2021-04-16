@@ -1,0 +1,17 @@
+{
+    "raukOutput": {
+        "generateOutput": {
+            "outputPath": "target/debug/deps/klee-last",
+            "lastChanged": "time"
+        },
+        "flashOutput": {
+            "outputPath": "target/thumv7em-none-eabi/debug/binary",
+            "lastChanged": "time"
+        },
+        "analyzeOutput": {
+            "outputPath": "./",
+            "lastChanged": "time"
+        }
+    }
+}
+
