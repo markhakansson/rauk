@@ -10,11 +10,7 @@ const HALT_TIMEOUT_SECONDS: u64 = 5;
 
 /// Builds the replay harness and flashes it to the target hardware.
 /// Returns the path to the built executable.
-pub fn flash_to_target(opts: Flashing) -> Result<PathBuf> {
-    let project_dir = match opts.path.clone() {
-        Some(path) => path,
-        None => PathBuf::from("./"),
-    };
+pub fn flash_to_target(opts: &Flashing, project_dir: &PathBuf) -> Result<PathBuf> {
     let mut target_dir = project_dir.clone();
     let mut cargo_path = project_dir.clone();
     target_dir.push("target/");
@@ -23,7 +19,7 @@ pub fn flash_to_target(opts: Flashing) -> Result<PathBuf> {
     build_replay_harness(&opts, &mut cargo_path, &mut target_dir)
         .context("Failed to build the replay harness")?;
 
-    let mut session = core_utils::open_and_attach_probe(opts.chip)?;
+    let mut session = core_utils::open_and_attach_probe(&opts.chip)?;
 
     // Flash the card with binary
     download_file(&mut session, &target_dir.as_path(), Format::Elf)?;

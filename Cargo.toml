@@ -20,3 +20,10 @@ toml = "0.5.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rustc-demangle = "0.1"
+ctrlc = { version = "3.0", features = ["termination"] }
+cargo_toml = "0.9.0"
+
+[patch.crates-io.cargo_toml]
+git = "https://gitlab.com/markhakansson/cargo_toml.git"
+branch = "fix-value-emitted-error"
+

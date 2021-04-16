@@ -1,4 +1,4 @@
-use super::measurement::{Breakpoint, EntryBreakpoint, ExitBreakpoint, OtherBreakpoint};
+use super::measurement::{Breakpoint, EntryBreakpoint, ExitBreakpoint};
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 

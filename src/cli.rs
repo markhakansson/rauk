@@ -1,13 +1,19 @@
-use crate::config::RaukConfig;
 use serde::Deserialize;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 pub struct CliOptions {
-    /// Path to a rauk config
+    /// Path to the RTIC project directory. Defaults to the current directory if not specified.
+    #[structopt(short, long, parse(from_os_str))]
+    pub path: Option<PathBuf>,
+    /// Path to a rauk config [UNSUPPORTED].
     #[structopt(parse(from_os_str))]
     pub config: Option<PathBuf>,
+    /// Don't patch the project's Cargo.toml. Will break the tool unless
+    /// you don't have the correct dependencies/features set!
+    #[structopt(long)]
+    pub no_patch: bool,
     #[structopt(subcommand)]
     pub cmd: Command,
 }
@@ -17,15 +23,11 @@ pub enum Command {
     Generate(Generation),
     Flash(Flashing),
     Analyze(Analysis),
-    All(All),
 }
 
 /// Generate test vectors for an RTIC application
 #[derive(Debug, StructOpt, Deserialize)]
 pub struct Generation {
-    /// Path to the RTIC project. Defaults to the current directory.
-    #[structopt(short, long, parse(from_os_str))]
-    pub path: Option<PathBuf>,
     /// Generate test for a binary target.
     #[structopt(short, long, required_unless = "example", conflicts_with = "example")]
     pub bin: Option<String>,
@@ -43,9 +45,6 @@ pub struct Generation {
 /// Flashes a binary to the target platform, modified to allow Rauk analysis
 #[derive(Debug, StructOpt, Deserialize)]
 pub struct Flashing {
-    /// Path to the RTIC project. Defaults to the current directory.
-    #[structopt(short, long, parse(from_os_str))]
-    pub path: Option<PathBuf>,
     /// Name of the binary target to flash.
     #[structopt(short, long, required_unless = "example", conflicts_with = "example")]
     pub bin: Option<String>,
@@ -66,9 +65,6 @@ pub struct Flashing {
 /// Runs the WCET analysis on the flashed binary
 #[derive(Debug, StructOpt, Deserialize)]
 pub struct Analysis {
-    /// Path to the RTIC project. Defaults to the current directory.
-    #[structopt(short, long, parse(from_os_str))]
-    pub path: Option<PathBuf>,
     /// Path to DWARF.
     #[structopt(short, long, parse(from_os_str))]
     pub dwarf: PathBuf,
@@ -81,80 +77,6 @@ pub struct Analysis {
     /// Output directory of traces as JSON
     #[structopt(short, long)]
     pub output: Option<PathBuf>,
-}
-
-/// Runs all commands in one go.
-#[derive(Debug, StructOpt)]
-pub struct All {
-    /// Path to the RTIC project. Defaults to the current directory.
-    #[structopt(short, long, parse(from_os_str))]
-    pub path: Option<PathBuf>,
-    /// Name of the binary target to flash.
-    #[structopt(short, long, required_unless = "example", conflicts_with = "example")]
-    pub bin: Option<String>,
-    /// Name of the example to flash.
-    #[structopt(short, long, required_unless = "bin", conflicts_with = "bin")]
-    pub example: Option<String>,
-    /// Build executable in release mode.
-    #[structopt(short, long)]
-    pub release: bool,
-    /// The target architecture to build the executable for.
-    #[structopt(short, long)]
-    pub target: Option<String>,
-    /// The name of the chip to flash to.
-    #[structopt(short, long)]
-    pub chip: String,
-    /// Emit all KLEE errors.
-    #[structopt(long)]
-    pub emit_all_errors: bool,
-}
-
-trait Config {
-    // Update command options with missing values if they exist in the config.
-    fn update_with(&mut self, config: &RaukConfig);
-}
-
-impl Config for Generation {
-    fn update_with(&mut self, config: &RaukConfig) {
-        if let Some(g) = &config.generation {
-            if self.path.is_none() && g.path.is_some() {
-                self.path = g.path.clone();
-            }
-            if self.bin.is_none() && g.bin.is_some() {
-                self.bin = g.bin.clone();
-            } else if self.example.is_none() && g.example.is_some() {
-                self.example = g.example.clone();
-            }
-        }
-    }
-}
-
-impl Config for Flashing {
-    fn update_with(&mut self, config: &RaukConfig) {
-        if let Some(f) = &config.flashing {
-            if self.path.is_none() && f.path.is_some() {
-                self.path = f.path.clone();
-            }
-            if self.bin.is_none() && f.bin.is_some() {
-                self.bin = f.bin.clone();
-            } else if self.example.is_none() && f.example.is_some() {
-                self.example = f.example.clone();
-            }
-            if self.target.is_none() && f.path.is_some() {
-                self.target = f.target.clone();
-            }
-        }
-    }
-}
-
-impl Config for Analysis {
-    fn update_with(&mut self, config: &RaukConfig) {
-        if let Some(a) = &config.analysis {
-            if self.path.is_none() && a.path.is_some() {
-                self.path = a.path.clone();
-            }
-        }
-    }
 }
 
 pub fn get_cli_opts() -> CliOptions {

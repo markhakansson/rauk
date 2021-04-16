@@ -6,11 +6,7 @@ use std::process::{Command, ExitStatus, Stdio};
 
 /// Builds the test harness, then generates test vectors from it using KLEE.
 /// Returns the path to where KLEE generated its tests.
-pub fn generate_klee_tests(tg: Generation) -> Result<PathBuf> {
-    let project_dir = match tg.path.clone() {
-        Some(path) => path,
-        None => PathBuf::from("./"),
-    };
+pub fn generate_klee_tests(tg: &Generation, project_dir: &PathBuf) -> Result<PathBuf> {
     let mut target_dir = project_dir.clone();
     let mut cargo_path = project_dir.clone();
     let mut project_name: String = String::from("");
