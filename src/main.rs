@@ -53,7 +53,6 @@ fn match_cli_opts(opts: &CliOptions, project_dir: &PathBuf) -> Result<()> {
                 .context("Failed to execute flash command")?;
             println!("{:#?}", path);
         }
-        Command::Test(_) => (),
     }
 
     Ok(())

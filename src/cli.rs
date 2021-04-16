@@ -23,14 +23,6 @@ pub enum Command {
     Generate(Generation),
     Flash(Flashing),
     Analyze(Analysis),
-    Test(Test),
-}
-
-#[derive(Debug, StructOpt, Deserialize)]
-pub struct Test {
-    /// Path to Cargo.toml
-    #[structopt(short, long, parse(from_os_str))]
-    pub path: Option<PathBuf>,
 }
 
 /// Generate test vectors for an RTIC application
