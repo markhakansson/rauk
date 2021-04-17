@@ -67,10 +67,10 @@ pub struct Flashing {
 pub struct Analysis {
     /// Path to DWARF.
     #[structopt(short, long, parse(from_os_str))]
-    pub dwarf: PathBuf,
+    pub dwarf: Option<PathBuf>,
     /// Path to KLEE tests.
     #[structopt(short, long, parse(from_os_str))]
-    pub ktests: PathBuf,
+    pub ktests: Option<PathBuf>,
     /// The name of the chip to flash to.
     #[structopt(short, long)]
     pub chip: String,

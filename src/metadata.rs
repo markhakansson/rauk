@@ -11,6 +11,7 @@ const RAUK_OUTPUT_INFO: &str = ".rauk_info.json";
 #[serde(rename_all = "camelCase")]
 pub struct RaukInfo {
     pub project_directory: PathBuf,
+    pub previous_execution: Option<PreviousExecution>,
     pub generate_output: Option<OutputInfo>,
     pub flash_output: Option<OutputInfo>,
     pub analyze_output: Option<OutputInfo>,
@@ -20,13 +21,14 @@ impl RaukInfo {
     pub fn new(project_dir: &PathBuf) -> RaukInfo {
         RaukInfo {
             project_directory: project_dir.clone(),
+            previous_execution: None,
             generate_output: None,
             flash_output: None,
             analyze_output: None,
         }
     }
 
-    /// Loads the output info file if it exists in the project path.
+    /// Loads the output info file **if it exists** in the project path.
     /// Will overwrite all values in the current struct!
     pub fn load(&mut self) -> Result<()> {
         let info_path = get_output_path(&self.project_directory);
@@ -41,6 +43,7 @@ impl RaukInfo {
                 )
             })?;
             self.project_directory = output_info.project_directory;
+            self.previous_execution = output_info.previous_execution;
             self.generate_output = output_info.generate_output;
             self.flash_output = output_info.flash_output;
             self.analyze_output = output_info.analyze_output;
@@ -56,6 +59,20 @@ impl RaukInfo {
         std::fs::write(info_path, data)?;
 
         Ok(())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviousExecution {
+    pub gracefully_terminated: bool,
+}
+
+impl Default for PreviousExecution {
+    fn default() -> Self {
+        PreviousExecution {
+            gracefully_terminated: false,
+        }
     }
 }
 

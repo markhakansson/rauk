@@ -20,6 +20,7 @@ fn main() -> Result<()> {
         None => canonicalize(PathBuf::from("./"))?,
     };
 
+    // Handle SIGINT and SIGTERM
     let no_patch = opts.no_patch;
     let project_dir_copy = project_dir.clone();
     ctrlc::set_handler(move || {
@@ -40,7 +41,6 @@ fn main() -> Result<()> {
     let res = match_cli_opts(&opts, &mut metadata);
 
     metadata.save()?;
-
     post_cleanup(&project_dir, opts.no_patch)?;
 
     res
