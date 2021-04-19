@@ -4,8 +4,8 @@ use std::fs::{copy, write};
 use std::path::PathBuf;
 use toml;
 
-const RAUK_CARGO_TOML: &str = ".rauk_cargo.toml";
-const ORIGINAL_CARGO_COPY: &str = ".Cargo.toml.copy";
+pub const RAUK_CARGO_TOML: &str = ".rauk_cargo.toml";
+pub const ORIGINAL_CARGO_COPY: &str = ".Cargo.toml.copy";
 
 /// Saves a copy of the orignal Cargo.toml in the project directory.
 pub fn backup_original_cargo_toml(project_dir: &PathBuf) -> Result<()> {
@@ -65,7 +65,6 @@ pub fn update_custom_cargo_toml(project_dir: &PathBuf) -> Result<()> {
 /// Swaps the Cargo.toml with .rauk_cargo.toml
 pub fn change_cargo_toml_to_custom(project_dir: &PathBuf) -> Result<()> {
     let (cargo_path, rauk_path) = get_cargo_and_rauk_path(&project_dir);
-    println!("cargo: {:?}, rauk: {:?}", &cargo_path, &rauk_path);
     copy(rauk_path, cargo_path).context("Could not swap Cargo.toml with custom one.")?;
     Ok(())
 }

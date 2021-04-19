@@ -1,5 +1,6 @@
 use crate::cli::Flashing;
 
+use crate::metadata::RaukInfo;
 use crate::utils::probe as core_utils;
 use anyhow::{Context, Result};
 use probe_rs::flashing::{download_file, Format};
@@ -10,9 +11,9 @@ const HALT_TIMEOUT_SECONDS: u64 = 5;
 
 /// Builds the replay harness and flashes it to the target hardware.
 /// Returns the path to the built executable.
-pub fn flash_to_target(opts: &Flashing, project_dir: &PathBuf) -> Result<PathBuf> {
-    let mut target_dir = project_dir.clone();
-    let mut cargo_path = project_dir.clone();
+pub fn flash_to_target(opts: &Flashing, metadata: &RaukInfo) -> Result<PathBuf> {
+    let mut target_dir = metadata.project_directory.clone();
+    let mut cargo_path = metadata.project_directory.clone();
     target_dir.push("target/");
     cargo_path.push("Cargo.toml");
 

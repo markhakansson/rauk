@@ -1,4 +1,5 @@
 use crate::cli::Generation;
+use crate::metadata::RaukInfo;
 use anyhow::{anyhow, Context, Result};
 use glob::glob;
 use std::path::PathBuf;
@@ -6,9 +7,9 @@ use std::process::{Command, ExitStatus, Stdio};
 
 /// Builds the test harness, then generates test vectors from it using KLEE.
 /// Returns the path to where KLEE generated its tests.
-pub fn generate_klee_tests(tg: &Generation, project_dir: &PathBuf) -> Result<PathBuf> {
-    let mut target_dir = project_dir.clone();
-    let mut cargo_path = project_dir.clone();
+pub fn generate_klee_tests(tg: &Generation, metadata: &RaukInfo) -> Result<PathBuf> {
+    let mut target_dir = metadata.project_directory.clone();
+    let mut cargo_path = metadata.project_directory.clone();
     let mut project_name: String = String::from("");
     target_dir.push("target/");
     cargo_path.push("Cargo.toml");
