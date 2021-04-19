@@ -1,9 +1,9 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::prelude::Utc;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-const RAUK_OUTPUT_INFO: &str = ".rauk_info.json";
+pub const RAUK_OUTPUT_INFO: &str = ".rauk_info.json";
 
 /// Information about the output from all rauk commands.
 /// Used to store intermediary information between commands.
@@ -11,7 +11,7 @@ const RAUK_OUTPUT_INFO: &str = ".rauk_info.json";
 #[serde(rename_all = "camelCase")]
 pub struct RaukInfo {
     pub project_directory: PathBuf,
-    pub previous_execution: Option<PreviousExecution>,
+    pub previous_execution: PreviousExecution,
     pub generate_output: Option<OutputInfo>,
     pub flash_output: Option<OutputInfo>,
     pub analyze_output: Option<OutputInfo>,
@@ -21,7 +21,7 @@ impl RaukInfo {
     pub fn new(project_dir: &PathBuf) -> RaukInfo {
         RaukInfo {
             project_directory: project_dir.clone(),
-            previous_execution: None,
+            previous_execution: PreviousExecution::default(),
             generate_output: None,
             flash_output: None,
             analyze_output: None,
@@ -42,6 +42,10 @@ impl RaukInfo {
                     &data
                 )
             })?;
+            if !output_info.previous_execution.gracefully_terminated {
+                return Err(anyhow!("Previous execution of rauk did not execute gracefully! Please manually restore your project's Cargo.toml by comparing it with the backup before proceeding. Then run `rauk cleanup`!"));
+            };
+
             self.project_directory = output_info.project_directory;
             self.previous_execution = output_info.previous_execution;
             self.generate_output = output_info.generate_output;

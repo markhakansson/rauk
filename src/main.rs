@@ -9,7 +9,7 @@ mod utils;
 use anyhow::{Context, Result};
 use cli::{CliOptions, Command};
 use metadata::{OutputInfo, RaukInfo};
-use std::fs::canonicalize;
+use std::fs::{canonicalize, remove_file};
 use std::path::PathBuf;
 use utils::cargo;
 
@@ -20,30 +20,37 @@ fn main() -> Result<()> {
         None => canonicalize(PathBuf::from("./"))?,
     };
 
-    // Handle SIGINT and SIGTERM
-    let no_patch = opts.no_patch;
-    let project_dir_copy = project_dir.clone();
-    ctrlc::set_handler(move || {
-        post_cleanup(&project_dir_copy, no_patch).unwrap();
-    })?;
+    if opts.cmd == Command::Cleanup {
+        cleanup(&project_dir)
+    } else {
+        // Handle SIGINT and SIGTERM
+        let no_patch = opts.no_patch;
+        let project_dir_copy = project_dir.clone();
+        ctrlc::set_handler(move || {
+            post_cleanup(&project_dir_copy, no_patch).unwrap();
+        })?;
 
-    // Patch the project's Cargo.toml
-    if !opts.no_patch {
-        cargo::backup_original_cargo_toml(&project_dir)?;
-        cargo::update_custom_cargo_toml(&project_dir)?;
-        cargo::change_cargo_toml_to_custom(&project_dir)?;
+        // Load metadata and check if previous execution was ok
+        let mut metadata = RaukInfo::new(&project_dir);
+        metadata.load()?;
+
+        // Patch the project's Cargo.toml
+        if !opts.no_patch {
+            cargo::backup_original_cargo_toml(&project_dir)?;
+            cargo::update_custom_cargo_toml(&project_dir)?;
+            cargo::change_cargo_toml_to_custom(&project_dir)?;
+        }
+
+        // Save the result, need to do some cleanup before returning it
+        let res = match_cli_opts(&opts, &mut metadata);
+
+        // Cleanup and save metadata
+        post_cleanup(&project_dir, opts.no_patch)?;
+        metadata.previous_execution.gracefully_terminated = true;
+        metadata.save()?;
+
+        res
     }
-
-    let mut metadata = RaukInfo::new(&project_dir);
-    metadata.load()?;
-
-    // Save the result, need to do some cleanup before returning it
-    let res = match_cli_opts(&opts, &mut metadata);
-
-    metadata.save()?;
-    post_cleanup(&project_dir, opts.no_patch)?;
-
-    res
 }
 
 fn match_cli_opts(opts: &CliOptions, metadata: &mut RaukInfo) -> Result<()> {
@@ -67,6 +74,7 @@ fn match_cli_opts(opts: &CliOptions, metadata: &mut RaukInfo) -> Result<()> {
             let info = OutputInfo::new(Some(path.clone()));
             metadata.flash_output = Some(info);
         }
+        _ => (),
     }
 
     Ok(())
@@ -80,4 +88,15 @@ fn post_cleanup(project_dir: &PathBuf, no_patch: bool) -> Result<()> {
     } else {
         cargo::restore_orignal_cargo_toml(&project_dir)
     }
+}
+
+/// Manual cleanup procedure.
+fn cleanup(project_dir: &PathBuf) -> Result<()> {
+    let mut metadata_path = project_dir.clone();
+    let mut rauk_cargo_toml = project_dir.clone();
+    metadata_path.push(metadata::RAUK_OUTPUT_INFO);
+    rauk_cargo_toml.push(utils::cargo::RAUK_CARGO_TOML);
+    remove_file(&metadata_path)?;
+    remove_file(&rauk_cargo_toml)?;
+    Ok(())
 }

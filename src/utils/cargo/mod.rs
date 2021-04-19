@@ -4,8 +4,8 @@ use std::fs::{copy, write};
 use std::path::PathBuf;
 use toml;
 
-const RAUK_CARGO_TOML: &str = ".rauk_cargo.toml";
-const ORIGINAL_CARGO_COPY: &str = ".Cargo.toml.copy";
+pub const RAUK_CARGO_TOML: &str = ".rauk_cargo.toml";
+pub const ORIGINAL_CARGO_COPY: &str = ".Cargo.toml.copy";
 
 /// Saves a copy of the orignal Cargo.toml in the project directory.
 pub fn backup_original_cargo_toml(project_dir: &PathBuf) -> Result<()> {
