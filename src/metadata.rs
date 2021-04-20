@@ -43,7 +43,7 @@ impl RaukInfo {
                 )
             })?;
             if !output_info.previous_execution.gracefully_terminated {
-                return Err(anyhow!("Previous execution of rauk did not execute gracefully! Please manually restore your project's Cargo.toml by comparing it with the backup before proceeding. Then run `rauk cleanup`!"));
+                return Err(anyhow!("Previous execution of rauk did not terminate gracefully! Please manually restore your project's Cargo.toml by comparing it with the backup. Afterwards run `rauk cleanup`before proceeding!"));
             };
 
             self.project_directory = output_info.project_directory;

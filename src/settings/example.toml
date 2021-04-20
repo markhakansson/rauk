@@ -1,0 +1,7 @@
+[general]
+no-patch = true
+klee-target = "x86_64-unknown-linux-gnu"
+flash-target = "thumbv7em-none-eabi"
+chip = "STM32F401RETx"
+release = false
+

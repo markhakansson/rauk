@@ -8,7 +8,7 @@ pub struct CliOptions {
     #[structopt(short, long, parse(from_os_str))]
     pub path: Option<PathBuf>,
     /// Path to a rauk config [UNSUPPORTED].
-    #[structopt(parse(from_os_str))]
+    #[structopt(long, parse(from_os_str))]
     pub config: Option<PathBuf>,
     /// Don't patch the project's Cargo.toml. Will break the tool unless
     /// you don't have the correct dependencies/features set!

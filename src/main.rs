@@ -1,15 +1,16 @@
 mod analysis;
 mod cargo;
 mod cli;
-mod config;
 mod flash;
 mod generate;
 mod metadata;
+mod settings;
 mod utils;
 
 use anyhow::{Context, Result};
 use cli::{CliOptions, Command};
 use metadata::{OutputInfo, RaukInfo};
+use settings::RaukSettings;
 use std::fs::{canonicalize, remove_file};
 use std::path::PathBuf;
 
@@ -23,6 +24,12 @@ fn main() -> Result<()> {
     if opts.cmd == Command::Cleanup {
         cleanup(&project_dir)
     } else {
+        let settings: RaukSettings = if settings::settings_file_exists(&project_dir) {
+            settings::load_settings_from_dir(&project_dir)?
+        } else {
+            RaukSettings::new()
+        };
+
         // Handle SIGINT and SIGTERM
         let no_patch = opts.no_patch;
         let project_dir_copy = project_dir.clone();
