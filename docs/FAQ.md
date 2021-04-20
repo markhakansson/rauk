@@ -5,3 +5,6 @@
 This can result in conflicts with your cached dependencies. You can solve this by
 * First clearing the cache with `cargo clean`
 * If that does not work, try deleting the `Cargo.lock` file
+
+## Has Rauk been tested by KLEE?
+Ironically, no.
