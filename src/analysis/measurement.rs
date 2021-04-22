@@ -24,8 +24,8 @@ pub fn read_breakpoints(
     core: &mut Core,
     subprograms: &Vec<Subprogram>,
     resource_locks: &Vec<Subroutine>,
-) -> Result<Vec<MeasurementResult>> {
-    let mut stack: Vec<MeasurementResult> = Vec::new();
+) -> Result<Vec<(Breakpoint, String, u32)>> {
+    let mut stack: Vec<(Breakpoint, String, u32)> = Vec::new();
     let name = BKPT_UNKNOWN_NAME.to_string();
 
     loop {
