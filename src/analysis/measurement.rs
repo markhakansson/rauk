@@ -69,7 +69,7 @@ impl From<u8> for Breakpoint {
 pub fn read_breakpoints(
     core: &mut Core,
     subprograms: &Vec<Subprogram>,
-    subroutines: &Vec<Subroutine>,
+    resource_locks: &Vec<Subroutine>,
 ) -> Result<Vec<(Breakpoint, String, u32)>> {
     let mut stack: Vec<(Breakpoint, String, u32)> = Vec::new();
     let name = BKPT_UNKNOWN_NAME.to_string();
@@ -98,7 +98,7 @@ pub fn read_breakpoints(
             }
             // Save the name and continue to the next loop iteration
             Breakpoint::Other(OtherBreakpoint::InsideLock) => {
-                let name = read_breakpoint_lock_name(core, &subroutines)?;
+                let name = read_breakpoint_lock_name(core, &resource_locks)?;
                 let (b, _, u) = stack.pop().unwrap();
                 stack.push((b, name, u));
 
@@ -133,13 +133,13 @@ fn read_breakpoint_task_name(core: &mut Core, subprograms: &Vec<Subprogram>) -> 
 }
 
 /// Tries to read the name of the resources that is currently locked from the Subroutines
-fn read_breakpoint_lock_name(core: &mut Core, subroutines: &Vec<Subroutine>) -> Result<String> {
+fn read_breakpoint_lock_name(core: &mut Core, resource_locks: &Vec<Subroutine>) -> Result<String> {
     // We read the link register to check where to return after the breakpoint
     let lr = core.registers().return_address();
     // This returns a PC inside the lock we want to find the name for
     let lr_val = core.read_core_reg(lr)?;
 
-    let in_range = dwarf::get_subroutines_in_range(subroutines, lr_val as u64)?;
+    let in_range = dwarf::get_subroutines_in_range(resource_locks, lr_val as u64)?;
     let optimal = dwarf::get_shortest_range_subroutine(&in_range)?;
 
     let name = match optimal {

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 pub type ObjectLocationMap = HashMap<String, Option<u64>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Subroutine {
     pub name: String,
     pub low_pc: u64,
@@ -363,8 +363,7 @@ fn parse_inlined_subroutine(
                 AttributeValue::UnitRef(ur) => {
                     let origin = header.entry(&abbrv, ur)?;
                     let origin_name = parse_abstract_origin(dwarf, &origin)?;
-                    name = parse_resource_name_from_abstract(origin_name);
-                    // name = function to split ehre
+                    name = Some(origin_name);
                 }
                 _ => (),
             }
@@ -393,6 +392,22 @@ fn parse_inlined_subroutine(
     Ok(subroutine)
 }
 
+/// From a list of subroutines, returns a list of the subroutines that are locked resources
+/// inside an RTIC task.
+pub fn get_resources_from_subroutines(subroutines: &Vec<Subroutine>) -> Vec<Subroutine> {
+    let mut resources: Vec<Subroutine> = Vec::new();
+
+    for subroutine in subroutines {
+        if let Some(resource_name) = parse_resource_name_from_abstract(subroutine.name.clone()) {
+            let mut copy = subroutine.clone();
+            copy.name = resource_name;
+            resources.push(copy);
+        }
+    }
+
+    resources
+}
+
 fn parse_resource_name_from_abstract(unmangled_name: String) -> Option<String> {
     let mut v: Vec<&str> = unmangled_name.split("impl rtic_core::Mutex for ").collect();
     if v.len() > 1 {
@@ -410,6 +425,25 @@ fn parse_resource_name_from_abstract(unmangled_name: String) -> Option<String> {
     } else {
         None
     }
+}
+
+/// From a list of subroutines, returns a list of the subroutines that are hardware
+/// readings. I.e. vcell::get or vcell::as_ptr.
+pub fn get_vcell_from_subroutines(subroutines: &Vec<Subroutine>) -> Vec<Subroutine> {
+    let mut vcells: Vec<Subroutine> = Vec::new();
+
+    for subroutine in subroutines {
+        if subroutine.name.contains("vcell") {
+            if subroutine.name.contains("get") || subroutine.name.contains("as_ptr") {
+                vcells.push(subroutine.clone());
+            }
+        }
+    }
+
+    // This might be unneccessary but it's better to be safe than sorry
+    vcells.sort_by(|a, b| a.low_pc.cmp(&b.low_pc));
+
+    vcells
 }
 
 fn parse_abstract_origin(

@@ -15,29 +15,10 @@ use std::path::PathBuf;
 use std::{borrow, fs};
 
 const HALT_TIMEOUT_SECONDS: u64 = 5;
+const RAUK_JSON_OUTPUT: &str = "rauk.json";
 
 pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
-    let dwarf_path = match &a.dwarf {
-        Some(path) => path,
-        None => match metadata.flash_output.as_ref() {
-            Some(flash_output) => match flash_output.output_path.as_ref() {
-                Some(path) => path,
-                None => return Err(anyhow!("No path to DWARF found/given")),
-            },
-            None => return Err(anyhow!("No path to DWARF found/given")),
-        },
-    };
-
-    let ktests_path = match &a.ktests {
-        Some(path) => path,
-        None => match metadata.generate_output.as_ref() {
-            Some(generate_output) => match generate_output.output_path.as_ref() {
-                Some(path) => path,
-                None => return Err(anyhow!("No path to KTESTS found/given")),
-            },
-            None => return Err(anyhow!("No path to KTESTS found/given")),
-        },
-    };
+    let (dwarf_path, ktests_path) = get_analysis_paths(&a, &metadata)?;
 
     let file = fs::File::open(dwarf_path)?;
     let mmap = unsafe { memmap::Mmap::map(&file)? };
@@ -58,10 +39,15 @@ pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
     // Create `EndianSlice`s for all of the sections.
     let dwarf = dwarf_cow.borrow(&borrow_section);
 
-    let ktests = klee::parse_ktest_files(ktests_path)?;
+    let ktests = klee::parse_ktest_files(&ktests_path)?;
     let addr = dwarf::get_replay_addresses(&dwarf)?;
     let subprograms = dwarf::get_subprograms(&dwarf)?;
     let subroutines = dwarf::get_subroutines(&dwarf)?;
+    let resources = dwarf::get_resources_from_subroutines(&subroutines);
+    let vcells = dwarf::get_vcell_from_subroutines(&subroutines);
+
+    println!("subprograms:\n {:#x?}", subprograms);
+    println!("vcells:\n {:#x?}", vcells);
 
     let mut session = core_utils::open_and_attach_probe(&a.chip)?;
     let mut core = session.core(0)?;
@@ -74,7 +60,7 @@ pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
         run_to_replay_start(&mut core).context("Could not continue to replay start")?;
         write_replay_objects(&mut core, &ktest, &addr)
             .with_context(|| format!("Could not write to memory with KTest: {:?}", &ktest))?;
-        let bkpts = measurement::read_breakpoints(&mut core, &subprograms, &subroutines)?;
+        let bkpts = measurement::read_breakpoints(&mut core, &subprograms, &resources)?;
         let mut trace = match analysis::wcet_analysis(bkpts) {
             Ok(trace) => trace,
             Err(_) => continue,
@@ -84,11 +70,38 @@ pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
 
     println!("{:#?}", traces);
 
-    let mut path = metadata.project_directory.clone();
-    path.push("rauk.json");
-    let serialized = serde_json::to_string(&traces)?;
+    let output_path = save_traces_to_directory(&traces, &metadata.project_directory)?;
+    Ok(Some(output_path))
+}
+
+/// Get the necessary paths for analysis.
+fn get_analysis_paths(a: &Analysis, metadata: &RaukInfo) -> Result<(PathBuf, PathBuf)> {
+    let dwarf_path: PathBuf = match &a.dwarf {
+        Some(path) => path.clone(),
+        None => match metadata.get_dwarf_path() {
+            Some(path) => path,
+            None => return Err(anyhow!("No path to DWARF was given/found")),
+        },
+    };
+
+    let ktests_path: PathBuf = match &a.ktests {
+        Some(path) => path.clone(),
+        None => match metadata.get_ktest_path() {
+            Some(path) => path,
+            None => return Err(anyhow!("No path to KTESTS found/given")),
+        },
+    };
+
+    Ok((dwarf_path, ktests_path))
+}
+
+/// Saves the analysis result to project directory.
+fn save_traces_to_directory(traces: &Vec<Trace>, project_dir: &PathBuf) -> Result<PathBuf> {
+    let mut path = project_dir.clone();
+    path.push(RAUK_JSON_OUTPUT);
+    let serialized = serde_json::to_string(traces)?;
     fs::write(&path, serialized)?;
-    Ok(Some(path))
+    Ok(path)
 }
 
 /// Runs to where the replay starts.

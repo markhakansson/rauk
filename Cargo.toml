@@ -7,7 +7,7 @@ description = "RTIC Analysis Using KLEE"
 
 [dependencies]
 probe-rs = { version = "0.10.0", git = "https://github.com/probe-rs/probe-rs" }
-ktest-parser = { git = "https://github.com/markhakansson/ktest-parser" }
+ktest-parser = "0.1.0"
 structopt = "0.3.21"
 anyhow = "1.0.38"
 glob = "0.3.0"

@@ -64,6 +64,22 @@ impl RaukInfo {
 
         Ok(())
     }
+
+    /// Return the DWARF path from metadata if it exists.
+    pub fn get_dwarf_path(&self) -> Option<PathBuf> {
+        match self.flash_output.as_ref() {
+            Some(flash_output) => flash_output.output_path.clone(),
+            None => None,
+        }
+    }
+
+    /// Return KTEST path from metadata if it exists.
+    pub fn get_ktest_path(&self) -> Option<PathBuf> {
+        match self.generate_output.as_ref() {
+            Some(generate_output) => generate_output.output_path.clone(),
+            None => None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

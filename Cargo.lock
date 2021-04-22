@@ -344,7 +344,8 @@ dependencies = [
 [[package]]
 name = "ktest-parser"
 version = "0.1.0"
-source = "git+https://github.com/markhakansson/ktest-parser#1c7a93a2fe911667db3b2772e3234205860185b9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b1075b8008abb853f3d22cbefb2d618c6c70da0ecaad29d71795087fbee7765"
 dependencies = [
  "anyhow",
  "nom",
