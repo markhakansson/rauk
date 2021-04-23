@@ -1,4 +1,4 @@
-use super::measurement::{Breakpoint, EntryBreakpoint, ExitBreakpoint};
+use super::breakpoints::{Breakpoint, EntryBreakpoint};
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -134,6 +134,7 @@ fn wcet_rec(
 
 #[cfg(test)]
 mod tests {
+    use super::super::breakpoints::ExitBreakpoint;
     use super::*;
     #[test]
     fn test_analysis_nested_and_multiple_locks() {

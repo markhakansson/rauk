@@ -1,68 +1,15 @@
-use super::dwarf::{self, Subprogram, Subroutine};
+use super::breakpoints::{Breakpoint, OtherBreakpoint};
+use super::dwarf::{self, ObjectLocationMap, Subprogram, Subroutine};
 use crate::utils::probe as core_utils;
 use anyhow::{anyhow, Context, Result};
-use probe_rs::Core;
+use ktest_parser::KTest;
+use probe_rs::{Core, MemoryInterface};
+
+/// Result of measuring on hardware. (Breakpoint, Name, Program counter).
+pub type MeasurementResult = (Breakpoint, String, u32);
 
 const HALT_TIMEOUT_SECONDS: u64 = 5;
 const BKPT_UNKNOWN_NAME: &str = "<unknown>";
-
-/// Information about the breakpoint type for RAUK analysis
-#[derive(Debug, Clone, PartialEq)]
-pub enum Breakpoint {
-    Other(OtherBreakpoint),
-    Entry(EntryBreakpoint),
-    Exit(ExitBreakpoint),
-}
-
-impl Breakpoint {
-    pub fn is_exit(&self) -> bool {
-        match self {
-            Breakpoint::Exit(_) => true,
-            _ => false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum EntryBreakpoint {
-    HardwareTaskStart = 2,
-    ResourceLockStart = 3,
-    SoftwareTaskStart = 4,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ExitBreakpoint {
-    SoftwareTaskEnd = 251,
-    ResourceLockEnd = 252,
-    HardwareTaskEnd = 253,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum OtherBreakpoint {
-    Default = 0,
-    InsideTask = 1,
-    Invalid = 100,
-    InsideLock = 254,
-    ReplayStart = 255,
-}
-
-impl From<u8> for Breakpoint {
-    fn from(u: u8) -> Breakpoint {
-        match u {
-            0 => Breakpoint::Other(OtherBreakpoint::Default),
-            1 => Breakpoint::Other(OtherBreakpoint::InsideTask),
-            2 => Breakpoint::Entry(EntryBreakpoint::HardwareTaskStart),
-            3 => Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
-            4 => Breakpoint::Entry(EntryBreakpoint::SoftwareTaskStart),
-            251 => Breakpoint::Exit(ExitBreakpoint::SoftwareTaskEnd),
-            252 => Breakpoint::Exit(ExitBreakpoint::ResourceLockEnd),
-            253 => Breakpoint::Exit(ExitBreakpoint::HardwareTaskEnd),
-            254 => Breakpoint::Other(OtherBreakpoint::InsideLock),
-            255 => Breakpoint::Other(OtherBreakpoint::ReplayStart),
-            _ => Breakpoint::Other(OtherBreakpoint::Invalid),
-        }
-    }
-}
 
 /// Read all breakpoints and the cycle counter at their positions
 /// between the ReplayStart breakpoints and return them as a list
@@ -70,8 +17,8 @@ pub fn read_breakpoints(
     core: &mut Core,
     subprograms: &Vec<Subprogram>,
     resource_locks: &Vec<Subroutine>,
-) -> Result<Vec<(Breakpoint, String, u32)>> {
-    let mut stack: Vec<(Breakpoint, String, u32)> = Vec::new();
+) -> Result<Vec<MeasurementResult>> {
+    let mut stack: Vec<MeasurementResult> = Vec::new();
     let name = BKPT_UNKNOWN_NAME.to_string();
 
     loop {
@@ -147,4 +94,48 @@ fn read_breakpoint_lock_name(core: &mut Core, resource_locks: &Vec<Subroutine>) 
         None => BKPT_UNKNOWN_NAME.to_string(),
     };
     Ok(name)
+}
+
+/// Runs to where the replay harness starts.
+pub fn run_to_replay_start(core: &mut Core) -> Result<()> {
+    // Wait for core to halt on a breakpoint. If it doesn't
+    // something is wrong.
+    core.wait_for_core_halted(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))?;
+    loop {
+        let imm = core_utils::read_breakpoint_value(core)?;
+        // Ready to analyze when reaching this breakpoint
+        if imm == OtherBreakpoint::ReplayStart as u8 {
+            break;
+        }
+        // Should there be other breakpoints we continue past them
+        core_utils::run(core)?;
+    }
+    Ok(())
+}
+
+/// Writes the replay contents of the KTEST file to the objects memory addresses.
+pub fn write_replay_objects(
+    core: &mut Core,
+    ktest: &KTest,
+    locations: &ObjectLocationMap,
+) -> Result<()> {
+    for test in &ktest.objects {
+        let location = locations.get(&test.name);
+        match location {
+            Some(addr) => {
+                let a = addr.unwrap() as u32;
+                let slice = test.bytes.as_slice();
+                core.write_8(a, slice)?;
+            }
+            None => {
+                // Should log a warning here instead
+                // return Err(anyhow!(
+                //     "Address was not found for KTestObject: {:?}",
+                //     &test
+                // ));
+                ()
+            }
+        }
+    }
+    Ok(())
 }

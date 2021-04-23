@@ -1,4 +1,5 @@
 mod analysis;
+mod breakpoints;
 mod dwarf;
 mod measurement;
 
@@ -7,14 +8,11 @@ use crate::metadata::RaukInfo;
 use crate::utils::{klee, probe as core_utils};
 use analysis::Trace;
 use anyhow::{anyhow, Context, Result};
-use dwarf::ObjectLocationMap;
-use ktest_parser::KTest;
+use measurement::MeasurementResult;
 use object::Object;
-use probe_rs::{Core, MemoryInterface};
 use std::path::PathBuf;
 use std::{borrow, fs};
 
-const HALT_TIMEOUT_SECONDS: u64 = 5;
 const RAUK_JSON_OUTPUT: &str = "rauk.json";
 
 pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
@@ -53,19 +51,24 @@ pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
     let mut core = session.core(0)?;
 
     let mut traces: Vec<Trace> = Vec::new();
+    let mut measurements: Vec<Vec<MeasurementResult>> = Vec::new();
 
-    // Analysis
+    // Measurement on hardware
     for ktest in ktests {
         // Continue until reaching BKPT 255 (replaystart)
-        run_to_replay_start(&mut core).context("Could not continue to replay start")?;
-        write_replay_objects(&mut core, &ktest, &addr)
+        measurement::run_to_replay_start(&mut core)
+            .context("Could not continue to replay start")?;
+        measurement::write_replay_objects(&mut core, &ktest, &addr)
             .with_context(|| format!("Could not write to memory with KTest: {:?}", &ktest))?;
         let bkpts = measurement::read_breakpoints(&mut core, &subprograms, &resources)?;
-        let mut trace = match analysis::wcet_analysis(bkpts) {
-            Ok(trace) => trace,
-            Err(_) => continue,
-        };
-        traces.append(&mut trace);
+        measurements.push(bkpts);
+    }
+
+    // Post-measurement analysis
+    for measurement in measurements {
+        if let Ok(mut trace) = analysis::wcet_analysis(measurement) {
+            traces.append(&mut trace);
+        }
     }
 
     println!("{:#?}", traces);
@@ -102,48 +105,4 @@ fn save_traces_to_directory(traces: &Vec<Trace>, project_dir: &PathBuf) -> Resul
     let serialized = serde_json::to_string(traces)?;
     fs::write(&path, serialized)?;
     Ok(path)
-}
-
-/// Runs to where the replay starts.
-fn run_to_replay_start(core: &mut Core) -> Result<()> {
-    // Wait for core to halt on a breakpoint. If it doesn't
-    // something is wrong.
-    core.wait_for_core_halted(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))?;
-    loop {
-        let imm = core_utils::read_breakpoint_value(core)?;
-        // Ready to analyze when reaching this breakpoint
-        if imm == measurement::OtherBreakpoint::ReplayStart as u8 {
-            break;
-        }
-        // Should there be other breakpoints we continue past them
-        core_utils::run(core)?;
-    }
-    Ok(())
-}
-
-/// Writes the replay contents of the KTEST file to the objects memory addresses.
-fn write_replay_objects(
-    core: &mut Core,
-    ktest: &KTest,
-    locations: &ObjectLocationMap,
-) -> Result<()> {
-    for test in &ktest.objects {
-        let location = locations.get(&test.name);
-        match location {
-            Some(addr) => {
-                let a = addr.unwrap() as u32;
-                let slice = test.bytes.as_slice();
-                core.write_8(a, slice)?;
-            }
-            None => {
-                // Should log a warning here instead
-                // return Err(anyhow!(
-                //     "Address was not found for KTestObject: {:?}",
-                //     &test
-                // ));
-                ()
-            }
-        }
-    }
-    Ok(())
 }
