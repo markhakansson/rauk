@@ -13,7 +13,6 @@ use object::Object;
 use std::path::PathBuf;
 use std::{borrow, fs};
 
-const HALT_TIMEOUT_SECONDS: u64 = 5;
 const RAUK_JSON_OUTPUT: &str = "rauk.json";
 
 pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
@@ -52,15 +51,25 @@ pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
     let mut core = session.core(0)?;
     let mut measurements: Vec<Vec<MeasurementResult>> = Vec::new();
 
+    let mut traces: Vec<Trace> = Vec::new();
+    let mut measurements: Vec<Vec<MeasurementResult>> = Vec::new();
+
     // Measurement on hardware
     for ktest in ktests {
         // Continue until reaching BKPT 255 (replaystart)
         measurement::run_to_replay_start(&mut core)
             .context("Could not continue to replay start")?;
-        measurement::write_replay_objects(&mut core, &addr, &ktest)
+        measurement::write_replay_objects(&mut core, &ktest, &addr)
             .with_context(|| format!("Could not write to memory with KTest: {:?}", &ktest))?;
         let bkpts = measurement::read_breakpoints(&mut core, &subprograms, &resources)?;
         measurements.push(bkpts);
+    }
+
+    // Post-measurement analysis
+    for measurement in measurements {
+        if let Ok(mut trace) = analysis::wcet_analysis(measurement) {
+            traces.append(&mut trace);
+        }
     }
 
     let traces = post_measurement_analysis(measurements)?;
@@ -68,46 +77,6 @@ pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
 
     let output_path = save_traces_to_directory(&traces, &metadata.project_directory)?;
     Ok(Some(output_path))
-}
-
-/// Get the necessary paths for analysis.
-fn get_analysis_paths(a: &Analysis, metadata: &RaukInfo) -> Result<(PathBuf, PathBuf)> {
-    let dwarf_path: PathBuf = match &a.dwarf {
-        Some(path) => path.clone(),
-        None => match metadata.get_dwarf_path() {
-            Some(path) => path,
-            None => return Err(anyhow!("No path to DWARF was given/found")),
-        },
-    };
-
-    let ktests_path: PathBuf = match &a.ktests {
-        Some(path) => path.clone(),
-        None => match metadata.get_ktest_path() {
-            Some(path) => path,
-            None => return Err(anyhow!("No path to KTESTS found/given")),
-        },
-    };
-
-    Ok((dwarf_path, ktests_path))
-}
-
-/// Saves the analysis result to project directory.
-fn save_traces_to_directory(traces: &Vec<Trace>, project_dir: &PathBuf) -> Result<PathBuf> {
-    let mut path = project_dir.clone();
-    path.push(RAUK_JSON_OUTPUT);
-    let serialized = serde_json::to_string(traces)?;
-    fs::write(&path, serialized)?;
-    Ok(path)
-}
-
-fn post_measurement_analysis(measurements: Vec<Vec<MeasurementResult>>) -> Result<Vec<Trace>> {
-    let mut traces: Vec<Trace> = Vec::new();
-    for measurement in measurements {
-        if let Ok(mut trace) = analysis::wcet_analysis(measurement) {
-            traces.append(&mut trace);
-        }
-    }
-    Ok(traces)
 }
 
 /// Get the necessary paths for analysis.
