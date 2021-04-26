@@ -11,12 +11,20 @@ use rustc_demangle::demangle;
 use std::borrow;
 use std::collections::HashMap;
 
-pub type ObjectLocationMap = HashMap<String, Option<u64>>;
+type Name = String;
+type MemoryLocation = Option<u64>;
 
+/// A map with the name of an RTIC resource and its memory location
+pub type ObjectLocationMap = HashMap<Name, MemoryLocation>;
+
+/// A DWARF subroutine containing the useful values for Rauk analysis
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Subroutine {
+    /// The demangled name of the subroutine
     pub name: String,
+    /// The starting address of this subroutine
     pub low_pc: u64,
+    /// The ending address of this subroutine
     pub high_pc: u64,
 }
 
@@ -26,7 +34,7 @@ impl Subroutine {
     }
 }
 
-// Details about a resource object and its location in RAM
+/// Details about a resource object and its location in RAM
 #[derive(Debug, Clone)]
 pub struct ObjectLocation {
     /// The name of the object.
@@ -35,10 +43,14 @@ pub struct ObjectLocation {
     pub address: Option<u64>,
 }
 
+/// A DWARF subprogram containing the useful value for Rauk analysis
 #[derive(Debug, Clone)]
 pub struct Subprogram {
+    /// The demangled name of the subprogram
     pub name: String,
+    /// The starting address of this subprogram
     pub low_pc: u64,
+    /// The ending address of this subprogram
     pub high_pc: u64,
 }
 
@@ -49,6 +61,8 @@ impl Subprogram {
 }
 
 /// Loads a DWARF object from file
+///
+/// * `object` - The file to read
 pub fn load_dwarf_from_file(object: object::File) -> Result<Dwarf<borrow::Cow<[u8]>>> {
     // Load a section and return as `Cow<[u8]>`.
     let load_section = |id: gimli::SectionId| -> Result<borrow::Cow<[u8]>, gimli::Error> {
@@ -68,8 +82,10 @@ pub fn load_dwarf_from_file(object: object::File) -> Result<Dwarf<borrow::Cow<[u
     Ok(gimli::Dwarf::load(&load_section, &load_section_sup)?)
 }
 
-/// Reads the binary's DWARF format and returns a list of replay variables and their memory
+/// Reads the binary's DWARF format and returns a map of replay variables and their memory
 /// location addresses.
+///
+/// * `dwarf` - A DWARF object
 pub fn get_replay_addresses(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
 ) -> Result<ObjectLocationMap> {
@@ -167,6 +183,8 @@ fn parse_object_location(
 }
 
 /// Reads the DWARF and returns a list of all subprograms in it.
+///
+/// * `dwarf` - A DWARF object
 pub fn get_subprograms(dwarf: &Dwarf<EndianSlice<RunTimeEndian>>) -> Result<Vec<Subprogram>> {
     let mut iter = dwarf.units();
     let mut programs: Vec<Subprogram> = vec![];
@@ -281,6 +299,8 @@ fn parse_subprogram(
 }
 
 /// Reads the DWARF and returns a list of subroutines and their low and high PCs.
+///
+/// * `dwarf` - A DWARF object
 pub fn get_subroutines(dwarf: &Dwarf<EndianSlice<RunTimeEndian>>) -> Result<Vec<Subroutine>> {
     let mut iter = dwarf.units();
     let mut subroutines: Vec<Subroutine> = Vec::new();
