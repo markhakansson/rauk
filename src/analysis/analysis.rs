@@ -1,4 +1,7 @@
-use super::measurement::{Breakpoint, EntryBreakpoint, ExitBreakpoint};
+use super::{
+    breakpoints::{Breakpoint, EntryBreakpoint},
+    measurement::MeasurementResult,
+};
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -47,10 +50,13 @@ impl Trace {
     }
 }
 
-pub fn wcet_analysis(mut bkpts: Vec<(Breakpoint, String, u32)>) -> Result<Vec<Trace>> {
+/// Run a WCET analysis on the given measurements and return a list of traces.
+///
+/// * `measurements` - A list of MeasurementResults measured on hardware
+pub fn wcet_analysis(mut measurements: Vec<MeasurementResult>) -> Result<Vec<Trace>> {
     let mut temp: Vec<EntryBreakpoint> = Vec::new();
-    bkpts.reverse();
-    let (traces, _) = wcet_rec(&mut bkpts, &mut temp)?;
+    measurements.reverse();
+    let (traces, _) = wcet_rec(&mut measurements, &mut temp)?;
     Ok(traces)
 }
 
@@ -134,6 +140,7 @@ fn wcet_rec(
 
 #[cfg(test)]
 mod tests {
+    use super::super::breakpoints::ExitBreakpoint;
     use super::*;
     #[test]
     fn test_analysis_nested_and_multiple_locks() {
