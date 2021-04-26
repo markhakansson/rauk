@@ -51,25 +51,15 @@ pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
     let mut core = session.core(0)?;
     let mut measurements: Vec<Vec<MeasurementResult>> = Vec::new();
 
-    let mut traces: Vec<Trace> = Vec::new();
-    let mut measurements: Vec<Vec<MeasurementResult>> = Vec::new();
-
     // Measurement on hardware
     for ktest in ktests {
         // Continue until reaching BKPT 255 (replaystart)
         measurement::run_to_replay_start(&mut core)
             .context("Could not continue to replay start")?;
-        measurement::write_replay_objects(&mut core, &ktest, &addr)
+        measurement::write_replay_objects(&mut core, &addr, &ktest)
             .with_context(|| format!("Could not write to memory with KTest: {:?}", &ktest))?;
         let bkpts = measurement::read_breakpoints(&mut core, &subprograms, &resources)?;
         measurements.push(bkpts);
-    }
-
-    // Post-measurement analysis
-    for measurement in measurements {
-        if let Ok(mut trace) = analysis::wcet_analysis(measurement) {
-            traces.append(&mut trace);
-        }
     }
 
     let traces = post_measurement_analysis(measurements)?;
@@ -77,6 +67,16 @@ pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
 
     let output_path = save_traces_to_directory(&traces, &metadata.project_directory)?;
     Ok(Some(output_path))
+}
+
+fn post_measurement_analysis(measurements: Vec<Vec<MeasurementResult>>) -> Result<Vec<Trace>> {
+    let mut traces: Vec<Trace> = Vec::new();
+    for measurement in measurements {
+        if let Ok(mut trace) = analysis::wcet_analysis(measurement) {
+            traces.append(&mut trace);
+        }
+    }
+    Ok(traces)
 }
 
 /// Get the necessary paths for analysis.

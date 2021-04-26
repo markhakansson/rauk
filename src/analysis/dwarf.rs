@@ -14,6 +14,10 @@ use std::collections::HashMap;
 type Name = String;
 type MemoryLocation = Option<u64>;
 
+/// A map with the name of an RTIC resource and its memory location
+pub type ObjectLocationMap = HashMap<Name, MemoryLocation>;
+
+/// A DWARF subroutine containing the useful values for Rauk analysis
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Subroutine {
     /// The demangled name of the subroutine

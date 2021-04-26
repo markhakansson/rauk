@@ -5,8 +5,11 @@ use anyhow::{anyhow, Context, Result};
 use ktest_parser::KTest;
 use probe_rs::{Core, MemoryInterface};
 
-/// Result of measuring on hardware. (Breakpoint, Name, Program counter).
-pub type MeasurementResult = (Breakpoint, String, u32);
+type ObjectName = String;
+type CycleCount = u32;
+/// Result of measuring on hardware. Containing the Breakpoint type and the name of the object
+/// (such as a Task name or resources name) and the cycle count at that breakpoint.
+pub type MeasurementResult = (Breakpoint, ObjectName, CycleCount);
 
 const HALT_TIMEOUT_SECONDS: u64 = 5;
 const BKPT_UNKNOWN_NAME: &str = "<unknown>";
@@ -101,6 +104,8 @@ fn read_breakpoint_lock_name(core: &mut Core, resource_locks: &Vec<Subroutine>) 
 }
 
 /// Runs to where the replay harness starts.
+///
+/// * `core` - A connected probe-rs _core_
 pub fn run_to_replay_start(core: &mut Core) -> Result<()> {
     // Wait for core to halt on a breakpoint. If it doesn't
     // something is wrong.
@@ -118,10 +123,16 @@ pub fn run_to_replay_start(core: &mut Core) -> Result<()> {
 }
 
 /// Writes the replay contents of the KTEST file to the objects memory addresses.
+/// If no memory address was found for the specific KTEST, it will ignore writing
+/// anything to it.
+///
+/// * `core` - A connected probe-rs _core_
+/// * `locations` - A map of RTIC resource names and their memory addresses
+/// * `ktest` - The test vector to write to its corresponding memory address
 pub fn write_replay_objects(
     core: &mut Core,
-    ktest: &KTest,
     locations: &ObjectLocationMap,
+    ktest: &KTest,
 ) -> Result<()> {
     for test in &ktest.objects {
         let location = locations.get(&test.name);
