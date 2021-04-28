@@ -90,7 +90,7 @@ fn post_cleanup(project_dir: &PathBuf, no_patch: bool) -> Result<()> {
     }
 }
 
-/// Manual cleanup procedure.
+/// Manual cleanup procedure. Removes metadata only.
 fn cleanup(project_dir: &PathBuf) -> Result<()> {
     let mut metadata_path = project_dir.clone();
     let mut rauk_cargo_toml = project_dir.clone();
