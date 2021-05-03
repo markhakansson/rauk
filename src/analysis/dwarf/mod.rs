@@ -133,7 +133,7 @@ pub fn get_subroutines_address_in_range(
 }
 
 /// Returns a list of subroutines that are within the `low_pc` to `high_pc` range.
-pub fn get_subroutines_in_range(
+pub fn _get_subroutines_in_range(
     subroutines: &Vec<Subroutine>,
     low_pc: u64,
     high_pc: u64,
@@ -218,18 +218,4 @@ pub fn get_vcell_from_subroutines(subroutines: &Vec<Subroutine>) -> Vec<Subrouti
     vcells.sort_by(|a, b| a.low_pc.cmp(&b.low_pc));
 
     vcells
-}
-
-/// Returns a list with the Subprograms containing the `name` as a substring in its name or linkage
-/// name.
-pub fn get_subprograms_with_name(subprograms: &Vec<Subprogram>, name: &str) -> Vec<Subprogram> {
-    let mut ok: Vec<Subprogram> = Vec::new();
-
-    for subprogram in subprograms {
-        if subprogram.name.contains(name) || subprogram.linkage_name.contains(name) {
-            ok.push(subprogram.clone());
-        }
-    }
-
-    ok
 }

@@ -1,7 +1,7 @@
 use crate::cli::Flashing;
 
 use crate::metadata::RaukInfo;
-use crate::utils::probe as core_utils;
+use crate::utils::core as core_utils;
 use anyhow::{Context, Result};
 use probe_rs::flashing::{download_file, Format};
 use std::path::PathBuf;

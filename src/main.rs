@@ -1,4 +1,5 @@
 mod analysis;
+mod cargo;
 mod cli;
 mod config;
 mod flash;
@@ -11,7 +12,6 @@ use cli::{CliOptions, Command};
 use metadata::{OutputInfo, RaukInfo};
 use std::fs::{canonicalize, remove_file};
 use std::path::PathBuf;
-use utils::cargo;
 
 fn main() -> Result<()> {
     let opts = cli::get_cli_opts();
@@ -95,7 +95,7 @@ fn cleanup(project_dir: &PathBuf) -> Result<()> {
     let mut metadata_path = project_dir.clone();
     let mut rauk_cargo_toml = project_dir.clone();
     metadata_path.push(metadata::RAUK_OUTPUT_INFO);
-    rauk_cargo_toml.push(utils::cargo::RAUK_CARGO_TOML);
+    rauk_cargo_toml.push(cargo::RAUK_CARGO_TOML);
     remove_file(&metadata_path)?;
     remove_file(&rauk_cargo_toml)?;
     Ok(())

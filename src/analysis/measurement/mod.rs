@@ -1,9 +1,12 @@
+mod helpers;
+
 use super::breakpoints::{Breakpoint, OtherBreakpoint};
 use super::dwarf::{self, ObjectLocationMap, Subprogram, Subroutine};
+use crate::utils::core as core_utils;
 use crate::utils::klee::get_vcell_ktestobjects;
-use crate::utils::probe as core_utils;
 use anyhow::{anyhow, Context, Result};
-use ktest_parser::KTest;
+use helpers::*;
+use ktest_parser::{KTest, KTestObject};
 use probe_rs::{Core, CoreRegisterAddress, MemoryInterface};
 
 type ObjectName = String;
@@ -13,7 +16,6 @@ type CycleCount = u32;
 pub type MeasurementResult = (Breakpoint, ObjectName, CycleCount);
 
 const HALT_TIMEOUT_SECONDS: u64 = 10;
-const BKPT_UNKNOWN_NAME: &str = "<unknown>";
 
 /// Runs the replay harness and measures the clock cycles.
 pub fn measure_replay_harness(
@@ -40,12 +42,14 @@ pub fn measure_replay_harness(
 }
 
 /// Read all breakpoints and the cycle counter at their positions
-/// between the ReplayStart breakpoints and return them as a list.
+/// from the start of a ReplayStart breakpoint until the next ReplayStart breakpoint.
+/// Return the measurement result as a list.
 ///
 /// * `core` - A connected probe-rs _core_
 /// * `subprograms` - A list of all subprograms of RTIC tasks
 /// * `resource_locks` - A list of all RTIC resource locks
 /// * `vcells` - A list of all hardware peripheral accesses
+/// * `ktest` - The test to replay
 fn read_breakpoints(
     core: &mut Core,
     subprograms: &Vec<Subprogram>,
@@ -53,83 +57,61 @@ fn read_breakpoints(
     vcells: &Vec<Subroutine>,
     ktest: &KTest,
 ) -> Result<Vec<MeasurementResult>> {
-    let mut stack: Vec<MeasurementResult> = Vec::new();
+    let mut measurements: Vec<MeasurementResult> = Vec::new();
     let name = BKPT_UNKNOWN_NAME.to_string();
 
     // For HW accesses
     let mut current_hw_bkpt: u32 = 0;
-    let mut vcell_stack: Vec<Subroutine> = Vec::new();
     let mut test_stack = get_vcell_ktestobjects(ktest);
     test_stack.reverse();
 
     loop {
         core_utils::run(core).context("Could not continue from replay start")?;
         core.wait_for_core_halted(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))?;
+
         if core_utils::current_pc(core)? == current_hw_bkpt && current_hw_bkpt != 0 {
             // Clear current hw breakpoint. Overwrite r0 with KTestObject value
             core.clear_hw_breakpoint(current_hw_bkpt)?;
             current_hw_bkpt = 0;
+            // It is assumed vcells occur in order so just pop the first test
             if let Some(test) = test_stack.pop() {
-                if test.num_bytes == 4 {
-                    let bytes: [u8; 4] =
-                        [test.bytes[0], test.bytes[1], test.bytes[2], test.bytes[3]];
-                    let data = u32::from_le_bytes(bytes);
-                    core.write_core_reg(CoreRegisterAddress(0), data)?;
-                }
-            }
-            // If vcell stack is not empty. Write it and then set new hw breakpoint;
-            if let Some(vcell) = vcell_stack.pop() {
-                current_hw_bkpt = vcell.high_pc as u32;
-                core.set_hw_breakpoint(current_hw_bkpt)?;
+                write_vcell_test_to_register(core, &test)?;
             }
         } else if !core_utils::breakpoint_at_pc(core)? {
             return Err(anyhow!(
                 "Core halted, but not due to breakpoint. Can't continue with analysis."
             ));
         } else {
-            // Read breakpoint immediate value
-            let imm = Breakpoint::from(core_utils::read_breakpoint_value(core)?);
-            match imm {
+            let bkpt = Breakpoint::from(core_utils::read_breakpoint_value(core)?);
+            match bkpt {
                 // On ReplayStart the loop is complete
                 Breakpoint::Other(OtherBreakpoint::ReplayStart) => break,
                 // Save the name and continue to the next loop iteration
                 Breakpoint::Other(OtherBreakpoint::InsideTask) => {
                     let name = read_breakpoint_task_name(core, &subprograms)?;
-
-                    // DONT SET VCELL STACK IF IT IS NOT EMPTY???
-                    // Get all vcells in range of this lock and update vcell_stack
-                    // Should not set this twice?
-                    if vcell_stack.is_empty() {
-                        let current_task = get_current_task(core, subprograms)?.unwrap();
-                        let subs =
-                            dwarf::get_subprograms_with_name(subprograms, &current_task.name);
-                        for sub in subs {
-                            let mut stack =
-                                dwarf::get_subroutines_in_range(&vcells, sub.low_pc, sub.high_pc)?;
-                            vcell_stack.append(&mut stack);
-                        }
-                        vcell_stack.dedup();
-
-                        // Sort by order
-                        vcell_stack.sort_by(|b, a| a.low_pc.cmp(&b.low_pc));
-
-                        // Set hw breakpoint at first vcell
-                        if let Some(vcell) = vcell_stack.pop() {
-                            current_hw_bkpt = vcell.high_pc as u32;
-                            core.set_hw_breakpoint(current_hw_bkpt)?;
-                        }
-                    }
-
-                    let (b, _, u) = stack.pop().unwrap();
-                    stack.push((b, name, u));
+                    let (b, _, u) = measurements.pop().unwrap();
+                    measurements.push((b, name, u));
 
                     continue;
                 }
                 // Save the name and continue to the next loop iteration
                 Breakpoint::Other(OtherBreakpoint::InsideLock) => {
                     let name = read_breakpoint_lock_name(core, &resource_locks)?;
-                    let (b, _, u) = stack.pop().unwrap();
-                    stack.push((b, name, u));
+                    let (b, _, u) = measurements.pop().unwrap();
+                    measurements.push((b, name, u));
+
+                    continue;
+                }
+                // If inside a vcell set hardware breakpoint before exiting vcell then continue
+                Breakpoint::Other(OtherBreakpoint::InsideLockClosure) => {
+                    // Get all vcells in range of this lock and update vcell_stack
+                    if let Some(current_vcell) = get_current_vcell_from_lr(core, &vcells)? {
+                        // Need to increment with 2 here. Because the last instruction of the
+                        // vcell function will overwrite `r0` and we need to step over it.
+                        // Then overwrite `r0` ourselves!
+                        current_hw_bkpt = current_vcell.high_pc as u32 + 2;
+                        core.set_hw_breakpoint(current_hw_bkpt)?;
+                    }
 
                     continue;
                 }
@@ -137,76 +119,17 @@ fn read_breakpoints(
                 _ => (),
             }
 
+            // Save the result onto the stack
             let cyccnt = core_utils::read_cycle_counter(core)?;
-            stack.push((imm, name.clone(), cyccnt));
+            measurements.push((bkpt, name.clone(), cyccnt));
         }
     }
 
-    Ok(stack)
+    Ok(measurements)
 }
 
-fn get_current_task(core: &mut Core, subprograms: &Vec<Subprogram>) -> Result<Option<Subprogram>> {
-    // We read the link register to check where to return after the breakpoint
-    let lr = core.registers().return_address();
-    // This returns a PC inside the task we want to find the name for
-    let lr_val = core.read_core_reg(lr)?;
-
-    let in_range = dwarf::get_subprograms_address_in_range(subprograms, lr_val as u64)?;
-    let optimal = dwarf::get_shortest_range_subprogram(&in_range)?;
-
-    Ok(optimal)
-}
-
-/// Returns the current resource lock we're inside
-fn get_current_resource_lock(
-    core: &mut Core,
-    resource_locks: &Vec<Subroutine>,
-) -> Result<Option<Subroutine>> {
-    // We read the link register to check where to return after the breakpoint
-    let lr = core.registers().return_address();
-    // This returns a PC inside the task we want to find the name for
-    let lr_val = core.read_core_reg(lr)?;
-
-    let in_range = dwarf::get_subroutines_address_in_range(resource_locks, lr_val as u64)?;
-    let optimal = dwarf::get_shortest_range_subroutine(&in_range)?;
-
-    Ok(optimal)
-}
-/// Tries to read the name of the current task from the Subprograms
-fn read_breakpoint_task_name(core: &mut Core, subprograms: &Vec<Subprogram>) -> Result<String> {
-    // We read the link register to check where to return after the breakpoint
-    let lr = core.registers().return_address();
-    // This returns a PC inside the task we want to find the name for
-    let lr_val = core.read_core_reg(lr)?;
-
-    let in_range = dwarf::get_subprograms_address_in_range(subprograms, lr_val as u64)?;
-    let optimal = dwarf::get_shortest_range_subprogram(&in_range)?;
-
-    let name = match optimal {
-        Some(s) => s.name,
-        None => BKPT_UNKNOWN_NAME.to_string(),
-    };
-    Ok(name)
-}
-
-/// Tries to read the name of the resources that is currently locked from the Subroutines
-fn read_breakpoint_lock_name(core: &mut Core, resource_locks: &Vec<Subroutine>) -> Result<String> {
-    // We read the link register to check where to return after the breakpoint
-    let lr = core.registers().return_address();
-    // This returns a PC inside the lock we want to find the name for
-    let lr_val = core.read_core_reg(lr)?;
-
-    let in_range = dwarf::get_subroutines_address_in_range(resource_locks, lr_val as u64)?;
-    let optimal = dwarf::get_shortest_range_subroutine(&in_range)?;
-
-    let name = match optimal {
-        Some(s) => s.name,
-        None => BKPT_UNKNOWN_NAME.to_string(),
-    };
-    Ok(name)
-}
-
-/// Runs to where the replay harness starts.
+/// Runs to where the replay harness starts. Also runs past any other breakpoints
+/// on the way, should there be any.
 ///
 /// * `core` - A connected probe-rs _core_
 fn run_to_replay_start(core: &mut Core) -> Result<()> {
@@ -258,4 +181,17 @@ fn write_replay_objects(
     Ok(())
 }
 
-fn _write_vcell_object(core: &mut Core, ktest: &KTest, vcell: &Subroutine) {}
+/// Writes a test vector for a vcell reading to the return register.
+///
+/// * `core` - A connected probe-rs _core_
+/// * `test` - The test vector
+fn write_vcell_test_to_register(core: &mut Core, test: &KTestObject) -> Result<()> {
+    if test.num_bytes == 4 {
+        let bytes: [u8; 4] = [test.bytes[0], test.bytes[1], test.bytes[2], test.bytes[3]];
+        let data = u32::from_le_bytes(bytes);
+        core.write_core_reg(CoreRegisterAddress(0), data)?;
+    } else {
+        // Log a warning here
+    }
+    Ok(())
+}
