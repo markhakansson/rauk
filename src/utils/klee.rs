@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use glob::glob;
-use ktest_parser::KTest;
+use ktest_parser::{KTest, KTestObject};
 use std::path::PathBuf;
 
 /// Reads and parses the latest generated KTest binaries in the given path.
@@ -28,4 +28,16 @@ pub fn parse_ktest_files(target_dir: &PathBuf) -> Result<Vec<KTest>> {
     }
 
     Ok(ktests)
+}
+
+/// Returns a list of all KTestObjects that contains the name "vcell".
+pub fn get_vcell_ktestobjects(ktest: &KTest) -> Vec<KTestObject> {
+    let mut vcells: Vec<KTestObject> = Vec::new();
+
+    for object in &ktest.objects {
+        if object.name.contains("vcell") {
+            vcells.push(object.clone());
+        }
+    }
+    vcells
 }

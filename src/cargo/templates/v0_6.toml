@@ -26,4 +26,5 @@ klee-analysis = [
 ]
 klee-replay = [
     "cortex-m-rtic/klee-replay",
+    "vcell/klee-replay",
 ]

@@ -4,10 +4,14 @@ use std::fs::{copy, write};
 use std::path::PathBuf;
 use toml;
 
+/// Name of the Rauk Cargo.toml
 pub const RAUK_CARGO_TOML: &str = ".rauk_cargo.toml";
+/// Name of the backup of the original Cargo.toml
 pub const ORIGINAL_CARGO_COPY: &str = ".Cargo.toml.copy";
 
 /// Saves a copy of the orignal Cargo.toml in the project directory.
+///
+/// * `project_dir` - The path to the RTIC project
 pub fn backup_original_cargo_toml(project_dir: &PathBuf) -> Result<()> {
     let (cargo_path, backup_path) = get_cargo_and_backup_path(project_dir);
     copy(&cargo_path, &backup_path)
@@ -32,6 +36,8 @@ fn get_cargo_and_rauk_path(project_dir: &PathBuf) -> (PathBuf, PathBuf) {
 }
 
 /// Restores the copy of the original Cargo.toml in the project directory.
+///
+/// * `project_dir` - The path to the RTIC project
 pub fn restore_orignal_cargo_toml(project_dir: &PathBuf) -> Result<()> {
     let (cargo_path, backup_path) = get_cargo_and_backup_path(project_dir);
     copy(&backup_path, &cargo_path).with_context(|| {
@@ -45,6 +51,8 @@ pub fn restore_orignal_cargo_toml(project_dir: &PathBuf) -> Result<()> {
 
 /// Updates the custom patched rauk configuration inside the project `path`
 /// If no such configuration exists it will create a new one.
+///
+/// * `project_dir` - The path to the RTIC project
 pub fn update_custom_cargo_toml(project_dir: &PathBuf) -> Result<()> {
     let mut rauk_path = project_dir.clone();
     rauk_path.push(RAUK_CARGO_TOML);
@@ -63,6 +71,8 @@ pub fn update_custom_cargo_toml(project_dir: &PathBuf) -> Result<()> {
 }
 
 /// Swaps the Cargo.toml with .rauk_cargo.toml
+///
+/// * `project_dir` - The path to the RTIC project
 pub fn change_cargo_toml_to_custom(project_dir: &PathBuf) -> Result<()> {
     let (cargo_path, rauk_path) = get_cargo_and_rauk_path(&project_dir);
     copy(rauk_path, cargo_path).context("Could not swap Cargo.toml with custom one.")?;
@@ -71,7 +81,7 @@ pub fn change_cargo_toml_to_custom(project_dir: &PathBuf) -> Result<()> {
 
 /// Reads the template file provided by RAUK
 fn read_rauk_patch_template() -> Result<Manifest> {
-    let content = include_str!("template.toml");
+    let content = include_str!("templates/v0_6.toml");
     let manifest: Manifest = toml::from_str(&content)?;
     Ok(manifest)
 }

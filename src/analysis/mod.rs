@@ -5,9 +5,9 @@ mod measurement;
 
 use crate::cli::Analysis;
 use crate::metadata::RaukInfo;
-use crate::utils::{klee, probe as core_utils};
+use crate::utils::{core as core_utils, klee};
 use analysis::Trace;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use measurement::MeasurementResult;
 use object::Object;
 use std::path::PathBuf;
@@ -42,26 +42,18 @@ pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
     let subprograms = dwarf::get_subprograms(&dwarf)?;
     let subroutines = dwarf::get_subroutines(&dwarf)?;
     let resources = dwarf::get_resources_from_subroutines(&subroutines);
-    let vcells = dwarf::get_vcell_from_subroutines(&subroutines);
-
-    println!("subprograms:\n {:#x?}", subprograms);
-    println!("vcells:\n {:#x?}", vcells);
-
+    let mut vcells = dwarf::get_vcell_from_subroutines(&subroutines);
     let mut session = core_utils::open_and_attach_probe(&a.chip)?;
     let mut core = session.core(0)?;
-    let mut measurements: Vec<Vec<MeasurementResult>> = Vec::new();
 
-    // Measurement on hardware
-    for ktest in ktests {
-        // Continue until reaching BKPT 255 (replaystart)
-        measurement::run_to_replay_start(&mut core)
-            .context("Could not continue to replay start")?;
-        measurement::write_replay_objects(&mut core, &addr, &ktest)
-            .with_context(|| format!("Could not write to memory with KTest: {:?}", &ktest))?;
-        let bkpts = measurement::read_breakpoints(&mut core, &subprograms, &resources)?;
-        measurements.push(bkpts);
-    }
-
+    let measurements = measurement::measure_replay_harness(
+        &mut core,
+        &ktests,
+        &addr,
+        &subprograms,
+        &resources,
+        &mut vcells,
+    )?;
     let traces = post_measurement_analysis(measurements)?;
     println!("{:#?}", traces);
 

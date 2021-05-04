@@ -31,8 +31,7 @@ pub fn run(core: &mut Core) -> Result<()> {
 /// Checks if there is a breakpoint at the current program counter.
 pub fn breakpoint_at_pc(core: &mut Core) -> Result<bool> {
     let mut instr16 = [0u8; 2];
-    let pc = core.registers().program_counter();
-    let pc_val = core.read_core_reg(pc)?;
+    let pc_val = current_pc(core)?;
     core.read_8(pc_val, &mut instr16)?;
 
     let check = match instr16[1] {
@@ -42,10 +41,14 @@ pub fn breakpoint_at_pc(core: &mut Core) -> Result<bool> {
     Ok(check)
 }
 
+pub fn current_pc(core: &mut Core) -> Result<u32> {
+    let pc = core.registers().program_counter();
+    Ok(core.read_core_reg(pc)?)
+}
+
 pub fn read_breakpoint_value(core: &mut Core) -> Result<u8> {
     let mut instr16 = [0u8; 2];
-    let pc = core.registers().program_counter();
-    let pc_val = core.read_core_reg(pc)?;
+    let pc_val = current_pc(core)?;
     core.read_8(pc_val, &mut instr16)?;
 
     match instr16[1] {

@@ -343,9 +343,9 @@ dependencies = [
 
 [[package]]
 name = "ktest-parser"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b1075b8008abb853f3d22cbefb2d618c6c70da0ecaad29d71795087fbee7765"
+checksum = "55c25a86144c4ce6963ac06f8d33e14fd9ff8107a1fef630417d33197c0f64b3"
 dependencies = [
  "anyhow",
  "nom",
@@ -360,9 +360,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "lexical-core"
-version = "0.7.5"
+version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21f866863575d0e1d654fbeeabdc927292fdf862873dc3c96c6f753357e13374"
+checksum = "6607c62aa161d23d17a9072cc5da0be67cdfc89d3afb1e8d9c842bebc2525ffe"
 dependencies = [
  "arrayvec",
  "bitflags",
@@ -373,9 +373,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.93"
+version = "0.2.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9385f66bf6105b241aa65a61cb923ef20efc665cb9f9bb50ac2f0c4b7f378d41"
+checksum = "18794a8ad5b29321f790b55d93dfba91e125cb1a9edbd4f8e3150acc771c1a5e"
 
 [[package]]
 name = "libusb1-sys"
@@ -493,7 +493,7 @@ checksum = "3831453b3449ceb48b6d9c7ad7c96d5ea673e9b470a1dc578c2ce6521230884c"
 [[package]]
 name = "probe-rs"
 version = "0.10.1"
-source = "git+https://github.com/probe-rs/probe-rs#8112c28912125a54aad016b4b935abf168812698"
+source = "git+https://github.com/probe-rs/probe-rs#08d9fa2a1ae42d7c2ac230bf4e6c8c8adadeecf4"
 dependencies = [
  "anyhow",
  "base64",
@@ -525,7 +525,7 @@ dependencies = [
 [[package]]
 name = "probe-rs-target"
 version = "0.1.0"
-source = "git+https://github.com/probe-rs/probe-rs#8112c28912125a54aad016b4b935abf168812698"
+source = "git+https://github.com/probe-rs/probe-rs#08d9fa2a1ae42d7c2ac230bf4e6c8c8adadeecf4"
 dependencies = [
  "base64",
  "jep106",
@@ -741,9 +741,9 @@ checksum = "a95656b5b37251de210aa2751d538b6f31ce375bacf725a32223bfa6344e0776"
 
 [[package]]
 name = "syn"
-version = "1.0.69"
+version = "1.0.70"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48fe99c6bd8b1cc636890bcc071842de909d902c81ac7dab53ba33c421ab8ffb"
+checksum = "b9505f307c872bab8eb46f77ae357c8eba1fdacead58ee5a850116b1d7f82883"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -834,9 +834,9 @@ checksum = "f7fe0bb3479651439c9112f72b6c505038574c9fbb575ed1bf3b797fa39dd564"
 
 [[package]]
 name = "vcpkg"
-version = "0.2.11"
+version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b00bca6106a5e23f3eee943593759b7fcddb00554332e856d990c893966879fb"
+checksum = "cbdbff6266a24120518560b5dc983096efb98462e51d0d68169895b237be3e5d"
 
 [[package]]
 name = "vec_map"
