@@ -99,7 +99,7 @@ mod rtic_ext {
 
 ### Changes to `cortex-m-rtic`
 * `export.rs`
-  * Set a breakpoint inside a resource lock to denote `INSIDE_LOCK`in order to retrieve the name of the resource
+  * Set a breakpoint inside a resource lock to denote `InsideLock`in order to retrieve the name of the resource
 
 ### Changes to `cortex-m-rtic-macros`
 * `codegen.rs`
@@ -108,7 +108,7 @@ mod rtic_ext {
   * Set entry and exit breakpoints inside the mutex implementation of a resource
 * `codegen/hardware_task.rs`
   * Set entry and exit breakpoints inside the task handler
-  * Set a breakpoint to denote `INSIDE_HARDWARE_TASK` inside of the task 
+  * Set a breakpoint to denote `InsideTask` inside of the task 
 * `codegen/dispatchers.rs`
   * Set entry and exit breakpoints inside the task dispatcher
 
@@ -138,6 +138,8 @@ And the breakpoint function can take immediate values as an argument which is us
 `vcell` is not usually a part of a user's `Cargo.toml` file but is used by underlying crates. This is patched such that when creating the test harness and
 running KLEE, hardware accesses can be tested via the added `klee-analysis` feature. Volatile writes will be ignored when generating tests as there are no side effects of that operation. But volatile reads will be made symbolic as it's when reading and dealing with the result as errors can be uncovered.
 
+The feature `klee-replay` is used during the anaysis phase and sets a breakpoint inside the vcell reading. This is used to overwrite the read value with the contents of a test vector.
+
 ## Feature: `klee-analysis`
 ### Changes to `vcell`
 * `lib.rs`
@@ -145,6 +147,9 @@ running KLEE, hardware accesses can be tested via the added `klee-analysis` feat
   * `get`and `as_ptr` will return a symbolic value
 
 ## Feature: `klee-replay`
+### Changes to `vcell`
+* `lib.rs`
+  * `get` and `as_ptr` contains a breakpoint to denote `InsideLockClosure`
 
 # cortex-m-rt
 The cortex-m-rt crate has been patched with a feature that currently does nothing. This in order to not fetch multiple versions of the crate. If multiple versions
