@@ -143,3 +143,12 @@ running KLEE, hardware accesses can be tested via the added `klee-analysis` feat
 * `lib.rs`
   * `set`does nothing
   * `get`and `as_ptr` will return a symbolic value
+
+## Feature: `klee-replay`
+
+# cortex-m-rt
+The cortex-m-rt crate has been patched with a feature that currently does nothing. This in order to not fetch multiple versions of the crate. If multiple versions
+of this crate are used, KLEE can not test the LLVM IR as there will be undefined and unlinked references to external globals.
+
+## Feature: `klee-analysis`
+No changes.
