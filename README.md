@@ -5,20 +5,24 @@
 run a measurement-based WCET analysis on actual hardware.
 
 ## Table of contents
-- [Features](#features)
-- [Requirements](#requirements)
-- [Getting started](#getting-started)
-- [Limitations](#limitations)
+1. [Features](#features)
+2. [Requirements](#requirements)
+3. [Getting started](#getting-started)
+4. [Limitations](#limitations)
 
 ## Features
-- Test vector generation of RTIC user tasks using KLEE
-- WCET analysis of user tasks
-- Response-time analysis of system
+- Automatic test vector generation of RTIC user tasks using KLEE
+- Measurement-based WCET analysis of user tasks using the test vectors
+- Response-time analysis of system from the WCET results
 
 ## Requirements
 * [KLEE](https://github.com/klee/klee) v2.2+
-* RTIC v0.6+
-* Linux
+* Linux x86-64
+
+### Supported crates
+* rtic v0.6+
+* cortex-m v0.7+
+* cortex-m-rt v0.6+
 
 ## Getting started
 
@@ -31,10 +35,18 @@ use panic_klee as _;
 ```
 Rauk will patch that dependency by default, so there is no need to change anything inside your Cargo.toml!
 
+### Test generation
+Rauk can generate tests on the LLVM IR 
+
 ## Limitations
 The following RTIC features are currently supported:
 * Hardware tasks
 * Resources
-    * Integer types
+   * Primitives
 * LateResources
-    * Integer types
+    * Signed and unsigned integers
+    * `char`
+* Peripheral readings
+
+## License
+TBA
