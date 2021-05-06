@@ -8,7 +8,9 @@ run a measurement-based WCET analysis on actual hardware.
 1. [Features](#features)
 2. [Requirements](#requirements)
 3. [Getting started](#getting-started)
-4. [Limitations](#limitations)
+4. [How it works](#how-it-works)
+5. [Limitations](#limitations)
+6. [License](#license)
 
 ## Features
 - Automatic test vector generation of RTIC user tasks using KLEE
@@ -54,6 +56,9 @@ Then it will write the contents of each test vector and at each breakpoint it st
 See [RAUK: Embedded Schedulability Analysis Using Symbolic Execution](https://github.com/markhakansson/master-thesis) (incomplete) for the thesis that resulted in this application.
 
 ## Limitations
+Rauk does have a few limitations, notably that the measurement-based analysis is not perfect. The way the measuring is done does add some overhead.
+
+
 The following RTIC features are currently supported:
 * Hardware tasks
 * Resources
@@ -62,6 +67,8 @@ The following RTIC features are currently supported:
     * Signed and unsigned integers
     * `char`
 * Peripheral readings
+
+* 
 
 ## License
 TBA
