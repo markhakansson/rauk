@@ -56,19 +56,17 @@ Then it will write the contents of each test vector and at each breakpoint it st
 See [RAUK: Embedded Schedulability Analysis Using Symbolic Execution](https://github.com/markhakansson/master-thesis) (incomplete) for the thesis that resulted in this application.
 
 ## Limitations
-Rauk does have a few limitations, notably that the measurement-based analysis is not perfect. The way the measuring is done does add some overhead.
-
-
-The following RTIC features are currently supported:
-* Hardware tasks
-* Resources
-   * Primitives
-* LateResources
-    * Signed and unsigned integers
-    * `char`
-* Peripheral readings
-
-* 
+Rauk does have a few limitations
+* The way measuring is done, does add some overhead
+* KLEE generates test vectors on LLVM IR which does not necessarily mean that the test vectors will execute the longest path in ARM instructions
+* The following RTIC features are currently supported:
+    * Hardware tasks
+    * Resources
+       * Primitives
+    * LateResources
+        * Signed and unsigned integers
+        * `char`
+    * Peripheral readings
 
 ## License
 TBA
