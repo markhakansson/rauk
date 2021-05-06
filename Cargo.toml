@@ -7,7 +7,7 @@ description = "RTIC Analysis Using KLEE"
 
 [dependencies]
 anyhow = "1.0.38"
-cargo_toml = "0.9.0"
+cargo_toml = { git = "https://gitlab.com/crates.rs/cargo_toml.git"}
 chrono = "0.4"
 ctrlc = { version = "3.0", features = ["termination"] }
 gimli = "0.23.0"
@@ -23,8 +23,3 @@ serde_json = "1.0"
 simplelog = "^0.10.0"
 structopt = "0.3.21"
 toml = "0.5.8"
-
-[patch.crates-io.cargo_toml]
-git = "https://gitlab.com/markhakansson/cargo_toml.git"
-branch = "fix-value-emitted-error"
-
