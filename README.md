@@ -17,16 +17,16 @@ run a measurement-based WCET analysis on actual hardware.
 
 ## Requirements
 * [KLEE](https://github.com/klee/klee) v2.2+
-* Linux x86-64
+* Linux x86-64 (host)
 
 ### Supported crates
-* rtic v0.6+
+* cortex-m-rtic v0.6+
 * cortex-m v0.7+
 * cortex-m-rt v0.6+
 
 ## Getting started
 
-### Important
+### Important!
 In order for Rauk to generate the test vectors you need to set a panic handler that aborts! Othewise it will not terminate. You can add the following
 to your application:
 ```rust
@@ -35,8 +35,23 @@ use panic_klee as _;
 ```
 Rauk will patch that dependency by default, so there is no need to change anything inside your Cargo.toml!
 
-### Test generation
-Rauk can generate tests on the LLVM IR 
+### Quickstart
+
+1. Build test harness and generate test vectors
+    - `rauk generate --bin <NAME>` or `rauk generate --example <NAME>`
+2. Build replay harness and flash it to hardware
+    - `rauk flash --target <TARGET> --chip <CHIP>`
+3. Measure replay harness to get WCET trace
+    - `rauk analyze --chip <CHIP>`
+
+## How it works
+The basics of Rauk is actually pretty simple. It first creates a test harness based on the RTIC application to be tested, where it marks task resources and 
+hardware readings for KLEE to work on symbolically. KLEE will generate test vectors for each user task this way. The test vectors created for each task will result in all paths of the task being reached. Using these vectors it is assumed that one of these vectors will result in the longest path of the task being run. 
+
+Then Rauk creates a replay harness where all entry and exitpoints of task handlers and resource locks (critical sections) are inserted with a breakpoint. 
+Then it will write the contents of each test vector and at each breakpoint it stops at, measure the cycle count. This will result in a trace for each test vector, which can be used to run a response-time analysis given further information.
+
+See [RAUK: Embedded Schedulability Analysis Using Symbolic Execution](https://github.com/markhakansson/master-thesis) (incomplete) for the thesis that resulted in this application.
 
 ## Limitations
 The following RTIC features are currently supported:
