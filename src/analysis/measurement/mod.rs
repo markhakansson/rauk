@@ -67,7 +67,8 @@ fn read_breakpoints(
 
     loop {
         core_utils::run(core).context("Could not continue from replay start")?;
-        core.wait_for_core_halted(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))?;
+        core.wait_for_core_halted(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))
+            .context("Core does not halt. The program might have panicked?")?;
 
         if core_utils::current_pc(core)? == current_hw_bkpt && current_hw_bkpt != 0 {
             // Clear current hw breakpoint. Overwrite r0 with KTestObject value
@@ -167,6 +168,7 @@ fn write_replay_objects(
                 let a = addr.unwrap() as u32;
                 let slice = test.bytes.as_slice();
                 core.write_8(a, slice)?;
+                core.flush()?;
             }
             None => {
                 // Should log a warning here instead

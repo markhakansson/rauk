@@ -7,7 +7,7 @@ use crate::cli::Analysis;
 use crate::metadata::RaukInfo;
 use crate::utils::{core as core_utils, klee};
 use analysis::Trace;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use measurement::MeasurementResult;
 use object::Object;
 use std::path::PathBuf;
@@ -53,8 +53,10 @@ pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
         &subprograms,
         &resources,
         &mut vcells,
-    )?;
-    let traces = post_measurement_analysis(measurements)?;
+    )
+    .context("Could not complete the measurement of the replay harness")?;
+    let traces = post_measurement_analysis(measurements)
+        .context("Could not complete the analysis of measurement data")?;
     println!("{:#?}", traces);
 
     let output_path = save_traces_to_directory(&traces, &metadata.project_directory)?;
