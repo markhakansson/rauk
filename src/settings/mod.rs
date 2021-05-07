@@ -1,9 +1,10 @@
-use crate::cli::{Analysis, Flashing, Generation};
 use anyhow::Result;
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::{fs::File, io::Read};
 use toml;
+
+use crate::cli::{AnalyzeInput, FlashInput};
 
 pub const RAUK_CONFIG_TOML: &str = "rauk.toml";
 
@@ -14,6 +15,8 @@ pub struct General {
     pub no_patch: Option<bool>,
     #[serde(default)]
     pub chip: Option<String>,
+    #[serde(default)]
+    pub target: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -26,6 +29,33 @@ pub struct RaukSettings {
 impl RaukSettings {
     pub fn new() -> Self {
         RaukSettings { general: None }
+    }
+}
+
+impl FlashInput {
+    /// If input is missing, check if it is available in the settings
+    /// and overwrite the missing input with those values.
+    pub fn get_missing_input(&mut self, settings: &RaukSettings) {
+        if let Some(general) = &settings.general {
+            if self.target.is_none() {
+                self.target = general.target.clone();
+            }
+            if self.chip.is_none() {
+                self.chip = general.chip.clone();
+            }
+        }
+    }
+}
+
+impl AnalyzeInput {
+    /// If input is missing, check if it is available in the settings
+    /// and overwrite the missing input with those values.
+    pub fn get_missing_input(&mut self, settings: &RaukSettings) {
+        if let Some(general) = &settings.general {
+            if self.chip.is_none() {
+                self.chip = general.chip.clone();
+            }
+        }
     }
 }
 

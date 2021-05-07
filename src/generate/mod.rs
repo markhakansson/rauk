@@ -1,4 +1,4 @@
-use crate::cli::Generation;
+use crate::cli::GenerateInput;
 use crate::metadata::RaukInfo;
 use anyhow::{anyhow, Context, Result};
 use glob::glob;
@@ -7,7 +7,7 @@ use std::process::{Command, ExitStatus, Stdio};
 
 /// Builds the test harness, then generates test vectors from it using KLEE.
 /// Returns the path to where KLEE generated its tests.
-pub fn generate_klee_tests(tg: &Generation, metadata: &RaukInfo) -> Result<PathBuf> {
+pub fn generate_klee_tests(input: &GenerateInput, metadata: &RaukInfo) -> Result<PathBuf> {
     let mut target_dir = metadata.project_directory.clone();
     let mut cargo_path = metadata.project_directory.clone();
     let mut project_name: String = String::from("");
@@ -15,7 +15,7 @@ pub fn generate_klee_tests(tg: &Generation, metadata: &RaukInfo) -> Result<PathB
     cargo_path.push("Cargo.toml");
 
     // Build the project
-    build_test_harness(&tg, &mut cargo_path, &mut target_dir, &mut project_name)
+    build_test_harness(&input, &mut cargo_path, &mut target_dir, &mut project_name)
         .context("Failed to build the test harness")?;
 
     let ll = fetch_latest_ll_file(&mut target_dir, &mut project_name)
@@ -23,7 +23,7 @@ pub fn generate_klee_tests(tg: &Generation, metadata: &RaukInfo) -> Result<PathB
 
     // Run KLEE
     let mut klee = Command::new("klee");
-    if tg.emit_all_errors {
+    if input.emit_all_errors {
         klee.arg("--emit-all-errors");
     }
     klee.arg(ll);
@@ -36,7 +36,7 @@ pub fn generate_klee_tests(tg: &Generation, metadata: &RaukInfo) -> Result<PathB
 
 /// Builds the test harness.
 fn build_test_harness(
-    tg: &Generation,
+    input: &GenerateInput,
     cargo_path: &mut PathBuf,
     target_dir: &mut PathBuf,
     project_name: &mut String,
@@ -44,19 +44,19 @@ fn build_test_harness(
     let mut cargo = Command::new("cargo");
     cargo.arg("rustc");
 
-    if tg.release {
+    if input.release {
         cargo.arg("--release");
         target_dir.push("release/");
     } else {
         target_dir.push("debug/");
     }
 
-    if tg.example.is_none() {
-        *project_name = tg.bin.as_ref().unwrap().to_string();
+    if input.example.is_none() {
+        *project_name = input.bin.as_ref().unwrap().to_string();
         cargo.args(&["--bin", project_name]);
         target_dir.push("deps/");
     } else {
-        *project_name = tg.example.as_ref().unwrap().to_string();
+        *project_name = input.example.as_ref().unwrap().to_string();
         cargo.args(&["--example", project_name]);
         target_dir.push("examples/");
     }
