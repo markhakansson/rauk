@@ -1,0 +1,5 @@
+[general]
+no-patch = true
+target = "thumbv7em-none-eabi"
+chip = "STM32F401RETx"
+

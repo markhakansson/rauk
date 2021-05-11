@@ -1,15 +1,16 @@
 mod analysis;
 mod cargo;
 mod cli;
-mod config;
 mod flash;
 mod generate;
 mod metadata;
+mod settings;
 mod utils;
 
 use anyhow::{Context, Result};
 use cli::{CliOptions, Command};
 use metadata::{OutputInfo, RaukInfo};
+use settings::RaukSettings;
 use std::fs::{canonicalize, remove_file};
 use std::path::PathBuf;
 
@@ -23,6 +24,12 @@ fn main() -> Result<()> {
     if opts.cmd == Command::Cleanup {
         cleanup(&project_dir)
     } else {
+        let settings: RaukSettings = if settings::settings_file_exists(&project_dir) {
+            settings::load_settings_from_dir(&project_dir)?
+        } else {
+            RaukSettings::new()
+        };
+
         // Handle SIGINT and SIGTERM
         let no_patch = opts.no_patch;
         let project_dir_copy = project_dir.clone();
@@ -42,7 +49,7 @@ fn main() -> Result<()> {
         }
 
         // Save the result, need to do some cleanup before returning it
-        let res = match_cli_opts(&opts, &mut metadata);
+        let res = match_cli_opts(&opts, &settings, &mut metadata);
 
         // Cleanup and save metadata
         post_cleanup(&project_dir, opts.no_patch)?;
@@ -53,7 +60,11 @@ fn main() -> Result<()> {
     }
 }
 
-fn match_cli_opts(opts: &CliOptions, metadata: &mut RaukInfo) -> Result<()> {
+fn match_cli_opts(
+    opts: &CliOptions,
+    settings: &RaukSettings,
+    metadata: &mut RaukInfo,
+) -> Result<()> {
     match &opts.cmd {
         Command::Generate(g) => {
             let path = generate::generate_klee_tests(g, &metadata)
@@ -63,14 +74,14 @@ fn match_cli_opts(opts: &CliOptions, metadata: &mut RaukInfo) -> Result<()> {
             metadata.generate_output = Some(info);
         }
         Command::Analyze(a) => {
-            let path =
-                analysis::analyze(a, &metadata).context("Failed to execute analyze command")?;
+            let path = analysis::analyze(a, &settings, &metadata)
+                .context("Failed to execute analyze command")?;
             let info = OutputInfo::new(path.clone());
             metadata.analyze_output = Some(info);
         }
         Command::Flash(f) => {
-            let path =
-                flash::flash_to_target(f, &metadata).context("Failed to execute flash command")?;
+            let path = flash::flash_to_target(f, &settings, &metadata)
+                .context("Failed to execute flash command")?;
             let info = OutputInfo::new(Some(path.clone()));
             metadata.flash_output = Some(info);
         }

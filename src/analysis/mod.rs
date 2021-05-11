@@ -3,9 +3,10 @@ mod breakpoints;
 mod dwarf;
 mod measurement;
 
-use crate::cli::Analysis;
+use crate::cli::AnalyzeInput;
 use crate::metadata::RaukInfo;
 use crate::utils::{core as core_utils, klee};
+use crate::RaukSettings;
 use analysis::Trace;
 use anyhow::{anyhow, Context, Result};
 use measurement::MeasurementResult;
@@ -15,8 +16,14 @@ use std::{borrow, fs};
 
 const RAUK_JSON_OUTPUT: &str = "rauk.json";
 
-pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
-    let (dwarf_path, ktests_path) = get_analysis_paths(&a, &metadata)?;
+pub fn analyze(
+    input: &AnalyzeInput,
+    settings: &RaukSettings,
+    metadata: &RaukInfo,
+) -> Result<Option<PathBuf>> {
+    let (dwarf_path, ktests_path) = get_analysis_paths(&input, &metadata)?;
+    let mut updated_input = input.clone();
+    updated_input.get_missing_input(settings);
 
     let file = fs::File::open(dwarf_path)?;
     let mmap = unsafe { memmap::Mmap::map(&file)? };
@@ -43,7 +50,13 @@ pub fn analyze(a: &Analysis, metadata: &RaukInfo) -> Result<Option<PathBuf>> {
     let subroutines = dwarf::get_subroutines(&dwarf)?;
     let resources = dwarf::get_resources_from_subroutines(&subroutines);
     let mut vcells = dwarf::get_vcell_from_subroutines(&subroutines);
-    let mut session = core_utils::open_and_attach_probe(&a.chip)?;
+    let mut session = if let Some(chip) = updated_input.chip {
+        core_utils::open_and_attach_probe(&chip)?
+    } else {
+        return Err(anyhow!(
+            "Can't attach to hardware. No chip type given as input"
+        ));
+    };
     let mut core = session.core(0)?;
 
     let measurements = measurement::measure_replay_harness(
@@ -74,8 +87,8 @@ fn post_measurement_analysis(measurements: Vec<Vec<MeasurementResult>>) -> Resul
 }
 
 /// Get the necessary paths for analysis.
-fn get_analysis_paths(a: &Analysis, metadata: &RaukInfo) -> Result<(PathBuf, PathBuf)> {
-    let dwarf_path: PathBuf = match &a.dwarf {
+fn get_analysis_paths(input: &AnalyzeInput, metadata: &RaukInfo) -> Result<(PathBuf, PathBuf)> {
+    let dwarf_path: PathBuf = match &input.dwarf {
         Some(path) => path.clone(),
         None => match metadata.get_dwarf_path() {
             Some(path) => path,
@@ -83,7 +96,7 @@ fn get_analysis_paths(a: &Analysis, metadata: &RaukInfo) -> Result<(PathBuf, Pat
         },
     };
 
-    let ktests_path: PathBuf = match &a.ktests {
+    let ktests_path: PathBuf = match &input.ktests {
         Some(path) => path.clone(),
         None => match metadata.get_ktest_path() {
             Some(path) => path,
