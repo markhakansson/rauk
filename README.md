@@ -59,14 +59,17 @@ See [RAUK: Embedded Schedulability Analysis Using Symbolic Execution](https://gi
 Rauk does have a few limitations
 * The way measuring is done, does add some overhead
 * KLEE generates test vectors on LLVM IR which does not necessarily mean that the test vectors will execute the longest path in ARM instructions
+* No Monotonics support yet
 * The following RTIC features are currently supported:
-    * Hardware tasks
-    * Resources
+    * Hardware and software tasks
+    * Regular spawn()
+* The following are tested for each task
+    * Initial resources
        * Primitives
-    * LateResources
+    * Late Resources
         * Signed and unsigned integers
         * `char`
-    * Peripheral readings
+    * Hardware readings via `vcell` from `embedded-hal` reads
 
 ## License
 TBA
