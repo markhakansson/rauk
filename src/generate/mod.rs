@@ -5,6 +5,8 @@ use glob::glob;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 
+const DEFAULT_KLEE_TARGET: &str = "x86_64-unknown-linux-gnu";
+
 /// Builds the test harness, then generates test vectors from it using KLEE.
 /// Returns the path to where KLEE generated its tests.
 pub fn generate_klee_tests(input: &GenerateInput, metadata: &RaukInfo) -> Result<PathBuf> {
@@ -43,6 +45,7 @@ fn build_test_harness(
 ) -> Result<ExitStatus, std::io::Error> {
     let mut cargo = Command::new("cargo");
     cargo.arg("rustc");
+    target_dir.push(DEFAULT_KLEE_TARGET);
 
     if input.release {
         cargo.arg("--release");
@@ -64,6 +67,7 @@ fn build_test_harness(
     cargo
         .args(&["--features", "klee-analysis"])
         .args(&["--manifest-path", cargo_path.to_str().unwrap()])
+        .args(&["--target", DEFAULT_KLEE_TARGET])
         //.arg("--message-format=json")
         .arg("--")
         // ignore linking
