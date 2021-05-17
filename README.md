@@ -35,8 +35,13 @@ to your application:
 #[cfg(feature = "klee-analysis")]
 use panic_klee as _;
 ```
-Rauk will patch that dependency by default, so there is no need to change anything inside your Cargo.toml!
-
+You will also have to enable LTO and debug information in your `Cargo.toml`
+```toml
+# Cargo.toml
+[profile.dev]
+lto = true
+debug = true
+```
 ### Quickstart
 
 1. Build test harness and generate test vectors
