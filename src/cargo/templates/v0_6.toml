@@ -1,5 +1,7 @@
-[dependencies.panic-klee]
-git = "https://gitlab.henriktjader.com/pln/panic-klee.git"
+[dependencies.panic-rauk]
+git = "https://github.com/markhakansson/panic-rauk.git"
+version = "0.1"
+optional = true
 
 [dependencies.klee-rs]
 git = "https://github.com/markhakansson/klee-rs.git"
@@ -18,11 +20,12 @@ vcell = { git = "https://github.com/markhakansson/vcell.git", branch = "klee" }
 
 [features]
 klee-analysis = [
+    "panic-rauk",
     "klee-rs",
     "cortex-m/klee-analysis",
     "vcell/klee-analysis",
     "cortex-m-rtic/klee-analysis",
-    "cortex-m-rt/klee-analysis"
+    "cortex-m-rt/klee-analysis",
 ]
 klee-replay = [
     "cortex-m-rtic/klee-replay",
