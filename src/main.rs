@@ -1,8 +1,8 @@
-mod analysis;
 mod cargo;
 mod cli;
 mod flash;
 mod generate;
+mod measure;
 mod metadata;
 mod settings;
 mod utils;
@@ -73,17 +73,17 @@ fn match_cli_opts(
             let info = OutputInfo::new(Some(path.clone()));
             metadata.generate_output = Some(info);
         }
-        Command::Analyze(a) => {
-            let path = analysis::analyze(a, &settings, &metadata)
-                .context("Failed to execute analyze command")?;
-            let info = OutputInfo::new(path.clone());
-            metadata.analyze_output = Some(info);
-        }
         Command::Flash(f) => {
             let path = flash::flash_to_target(f, &settings, &metadata)
                 .context("Failed to execute flash command")?;
             let info = OutputInfo::new(Some(path.clone()));
             metadata.flash_output = Some(info);
+        }
+        Command::Measure(a) => {
+            let path = measure::wcet_measurement(a, &settings, &metadata)
+                .context("Failed to execute analyze command")?;
+            let info = OutputInfo::new(path.clone());
+            metadata.analyze_output = Some(info);
         }
         _ => (),
     }
