@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::{fs::File, io::Read};
 use toml;
 
-use crate::cli::{AnalyzeInput, FlashInput};
+use crate::cli::{FlashInput, MeasureInput};
 
 pub const RAUK_CONFIG_TOML: &str = "rauk.toml";
 
@@ -47,7 +47,7 @@ impl FlashInput {
     }
 }
 
-impl AnalyzeInput {
+impl MeasureInput {
     /// If input is missing, check if it is available in the settings
     /// and overwrite the missing input with those values.
     pub fn get_missing_input(&mut self, settings: &RaukSettings) {
