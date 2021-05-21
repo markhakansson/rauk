@@ -1,3 +1,4 @@
+mod analysis;
 mod cargo;
 mod cli;
 mod flash;
@@ -85,7 +86,10 @@ fn match_cli_opts(
             let info = OutputInfo::new(path.clone());
             metadata.analyze_output = Some(info);
         }
-        _ => (),
+        Command::Analyze(input) => {
+            analysis::response_times(input)?;
+        }
+        Command::Cleanup => (),
     }
 
     Ok(())

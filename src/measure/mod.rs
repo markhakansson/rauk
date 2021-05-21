@@ -1,7 +1,7 @@
 mod breakpoints;
 mod dwarf;
 mod hardware;
-mod trace;
+pub mod trace;
 
 use crate::cli::MeasureInput;
 use crate::metadata::RaukInfo;
@@ -12,7 +12,7 @@ use hardware::MeasurementResult;
 use object::Object;
 use std::path::PathBuf;
 use std::{borrow, fs};
-use trace::Trace;
+pub use trace::Trace;
 
 const RAUK_JSON_OUTPUT: &str = "rauk.json";
 
