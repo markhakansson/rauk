@@ -187,7 +187,7 @@ pub fn parse_inlined_subroutines(
 
     while let Some((_, entry)) = entries.next_dfs()? {
         if entry.tag() == gimli::DW_TAG_inlined_subroutine {
-            match parse_inlined_subroutine(dwarf, header, entry)? {
+            match parse_inlined_subroutine(dwarf, unit, header, entry)? {
                 Some(subroutine) => subroutines.push(subroutine),
                 None => (),
             }
@@ -198,6 +198,7 @@ pub fn parse_inlined_subroutines(
 
 pub fn parse_inlined_subroutine(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
+    unit: &Unit<EndianSlice<RunTimeEndian>>,
     header: &UnitHeader<EndianSlice<RunTimeEndian>>,
     entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
 ) -> Result<Option<Subroutine>> {
@@ -206,6 +207,7 @@ pub fn parse_inlined_subroutine(
     let mut name: Option<String> = None;
     let mut low_pc: Option<u64> = None;
     let mut high_pc: Option<u64> = None;
+    let mut ranges: Vec<(u64, u64)> = vec![];
 
     while let Some(attr) = attrs.next()? {
         if attr.name() == gimli::constants::DW_AT_abstract_origin {
@@ -228,15 +230,34 @@ pub fn parse_inlined_subroutine(
                 AttributeValue::Udata(a) => high_pc = Some(a),
                 _ => (),
             }
+        } else if attr.name() == gimli::constants::DW_AT_ranges {
+            match attr.value() {
+                AttributeValue::RangeListsRef(offset) => {
+                    let mut rngs = dwarf.ranges(unit, offset)?;
+                    while let Some(r) = rngs.next()? {
+                        ranges.push((r.begin, r.end));
+                    }
+                }
+                _ => (),
+            }
         }
     }
 
-    let subroutine = match (name, low_pc, high_pc) {
-        (Some(name), Some(low), Some(high)) => Some(Subroutine {
-            name,
-            low_pc: low,
-            high_pc: low + high,
-        }),
+    match (low_pc, high_pc) {
+        (Some(low), Some(high)) => {
+            ranges.push((low, low + high));
+        }
+        _ => (),
+    }
+
+    let subroutine = match name {
+        Some(name) => {
+            if ranges.is_empty() {
+                None
+            } else {
+                Some(Subroutine { name, ranges })
+            }
+        }
         _ => None,
     };
 

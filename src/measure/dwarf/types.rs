@@ -11,20 +11,22 @@ pub type ObjectLocationMap = HashMap<Name, MemoryLocation>;
 pub struct Subroutine {
     /// The demangled name of the subroutine
     pub name: String,
-    /// The starting address of this subroutine
-    pub low_pc: u64,
-    /// The ending address of this subroutine
-    pub high_pc: u64,
+    /// List of ranges of starting and ending addresses where
+    /// this subroutine is used (low_pc, high_pc)
+    pub ranges: Vec<(u64, u64)>,
 }
 
 impl Subroutine {
-    /// Checks if `address` is inside this subroutine's range.
-    pub fn address_in_range(&self, address: u64) -> bool {
-        (self.low_pc <= address) && (address <= self.high_pc)
-    }
-    /// Checks if this subroutine is within `range`
-    pub fn in_range(&self, range: std::ops::Range<u64>) -> bool {
-        range.contains(&self.low_pc) && range.contains(&self.high_pc)
+    /// Checks if `address` is inside this subroutine's range. Returns
+    /// the range if that is the case.
+    pub fn range_from_address(&self, address: u64) -> Option<(u64, u64)> {
+        let mut res: Option<(u64, u64)> = None;
+        for (low_pc, high_pc) in &self.ranges {
+            if (low_pc <= &address) && (&address <= high_pc) {
+                res = Some((*low_pc, *high_pc));
+            }
+        }
+        res
     }
 }
 

@@ -110,7 +110,11 @@ fn read_breakpoints(
                         // Need to increment with 2 here. Because the last instruction of the
                         // vcell function will overwrite `r0` and we need to step over it.
                         // Then overwrite `r0` ourselves!
-                        current_hw_bkpt = current_vcell.high_pc as u32 + 2;
+                        if current_vcell.ranges.is_empty() {
+                            return Err(anyhow!("Subroutine has no address ranges"));
+                        }
+                        let (_, high_pc) = current_vcell.ranges[0];
+                        current_hw_bkpt = high_pc as u32 + 2;
                         core.set_hw_breakpoint(current_hw_bkpt)?;
                     }
 

@@ -1,7 +1,7 @@
 mod parser;
 mod types;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use gimli::{
     read::{Dwarf, EndianSlice},
     RunTimeEndian,
@@ -124,25 +124,12 @@ pub fn get_subroutines_address_in_range(
     let mut ok: Vec<Subroutine> = vec![];
 
     for subroutine in subroutines {
-        if subroutine.address_in_range(address) {
-            ok.push(subroutine.clone());
-        }
-    }
-
-    Ok(ok)
-}
-
-/// Returns a list of subroutines that are within the `low_pc` to `high_pc` range.
-pub fn _get_subroutines_in_range(
-    subroutines: &Vec<Subroutine>,
-    low_pc: u64,
-    high_pc: u64,
-) -> Result<Vec<Subroutine>> {
-    let mut ok: Vec<Subroutine> = vec![];
-
-    for subroutine in subroutines {
-        if subroutine.in_range(low_pc..high_pc) {
-            ok.push(subroutine.clone());
+        // If in range, push a new subroutine copy with only that range to result
+        if let Some(res) = subroutine.range_from_address(address) {
+            ok.push(Subroutine {
+                name: subroutine.name.clone(),
+                ranges: vec![res],
+            });
         }
     }
 
@@ -157,7 +144,12 @@ pub fn get_shortest_range_subroutine(
     let mut shortest_range: u64 = u64::MAX;
 
     for subroutine in subroutines_in_range {
-        let sp_range = subroutine.high_pc - subroutine.low_pc;
+        if subroutine.ranges.is_empty() {
+            return Err(anyhow!("Subroutine has no address ranges"));
+        }
+
+        let (low, high) = &subroutine.ranges[0];
+        let sp_range = high - low;
         if sp_range < shortest_range {
             shortest_range = sp_range;
             ok = Some(subroutine.clone());
@@ -215,7 +207,7 @@ pub fn get_vcell_from_subroutines(subroutines: &Vec<Subroutine>) -> Vec<Subrouti
     }
 
     // This might be unneccessary but it's better to be safe than sorry
-    vcells.sort_by(|a, b| a.low_pc.cmp(&b.low_pc));
+    //vcells.sort_by(|a, b| a.low_pc.cmp(&b.low_pc));
 
     vcells
 }
