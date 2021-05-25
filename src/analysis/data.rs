@@ -36,14 +36,40 @@ pub struct Resource {
 
 pub fn pre_analysis(tasks: &Vec<Task>, traces: &Vec<Trace>) -> (TaskResources, Priorities) {
     let mut task_map: TaskMap = HashMap::new();
+    let mut wcet_traces: Vec<Trace> = vec![];
+
     for task in tasks {
         task_map.insert(task.name.clone(), task.clone());
+        if let Some(trace) = get_longest_wcet_trace(task, traces) {
+            wcet_traces.push(trace);
+        }
     }
 
-    let mut task_resources = get_task_resources(traces, &task_map);
+    println!("{:#?}", traces);
+    println!("longest wcet: {:#?}", wcet_traces);
+
+    let mut task_resources = get_task_resources(&wcet_traces, &task_map);
     let priorities = get_priorites(&tasks, &mut task_resources);
 
     (task_resources, priorities)
+}
+
+/// Returns the trace of the longest WCET for a task.
+fn get_longest_wcet_trace(task: &Task, traces: &Vec<Trace>) -> Option<Trace> {
+    let mut current_wcet: Option<Trace> = None;
+
+    for trace in traces {
+        if trace.name == task.name {
+            if let Some(wcet) = &current_wcet {
+                if (trace.end - trace.start) > (wcet.end - wcet.start) {
+                    current_wcet = Some(trace.clone());
+                }
+            } else {
+                current_wcet = Some(trace.clone());
+            }
+        }
+    }
+    current_wcet
 }
 
 /// Returns a map of tasks and the resources they access
@@ -63,6 +89,10 @@ fn update_task_resources(task: &Task, traces: &Vec<Trace>, task_resources: &mut 
     for trace in traces {
         if let Some(set) = task_resources.get_mut(&task.name) {
             set.insert(trace.name.clone());
+        } else {
+            let mut set: HashSet<String> = HashSet::new();
+            set.insert(trace.name.clone());
+            task_resources.insert(task.name.clone(), set);
         }
         update_task_resources(task, &trace.inner, task_resources);
     }
@@ -81,6 +111,8 @@ fn get_priorites(tasks: &Vec<Task>, task_resources: &mut TaskResources) -> Prior
                     if &task.priority > priority {
                         priorities.insert(resource.clone(), task.priority);
                     }
+                } else {
+                    priorities.insert(resource.clone(), task.priority);
                 }
             }
         }

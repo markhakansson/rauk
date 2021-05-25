@@ -56,7 +56,8 @@ impl Trace {
 pub fn wcet_analysis(mut measurements: Vec<MeasurementResult>) -> Result<Vec<Trace>> {
     let mut temp: Vec<EntryBreakpoint> = Vec::new();
     measurements.reverse();
-    let (traces, _) = wcet_rec(&mut measurements, &mut temp)?;
+    let (mut traces, _) = wcet_rec(&mut measurements, &mut temp)?;
+    normalize_task_traces(&mut traces);
     Ok(traces)
 }
 
@@ -136,6 +137,24 @@ fn wcet_rec(
     }
 
     Ok((traces, (curr_bkpt, curr_name, curr_cyccnt)))
+}
+
+/// Normalizes a list of traces
+fn normalize_task_traces(traces: &mut Vec<Trace>) {
+    for trace in traces {
+        let delta = trace.start;
+        normalize_inner_traces(&mut trace.inner, delta);
+        trace.start = 0;
+        trace.end -= delta;
+    }
+}
+
+fn normalize_inner_traces(traces: &mut Vec<Trace>, delta: u32) {
+    for trace in traces {
+        trace.start -= delta;
+        trace.end -= delta;
+        normalize_inner_traces(&mut trace.inner, delta);
+    }
 }
 
 #[cfg(test)]

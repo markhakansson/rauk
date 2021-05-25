@@ -25,9 +25,7 @@ pub fn response_times(input: &AnalyzeInput) -> Result<()> {
     measurements_file.read_to_string(&mut measurements_contents)?;
 
     let tasks: Tasks = toml::from_str(&details_contents)?;
-    println!("Tasks: {:#x?}", &tasks);
     let traces: Vec<Trace> = serde_json::from_str(&measurements_contents)?;
-    println!("Traces: {:#x?}", &traces);
 
     let (t, p) = data::pre_analysis(&tasks.tasks, &traces);
     println!("Task resources: {:#?}", &t);
