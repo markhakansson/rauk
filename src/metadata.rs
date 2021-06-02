@@ -14,7 +14,7 @@ pub struct RaukInfo {
     pub previous_execution: PreviousExecution,
     pub generate_output: Option<OutputInfo>,
     pub flash_output: Option<OutputInfo>,
-    pub analyze_output: Option<OutputInfo>,
+    pub measure_output: Option<OutputInfo>,
 }
 
 impl RaukInfo {
@@ -24,7 +24,7 @@ impl RaukInfo {
             previous_execution: PreviousExecution::default(),
             generate_output: None,
             flash_output: None,
-            analyze_output: None,
+            measure_output: None,
         }
     }
 
@@ -50,7 +50,7 @@ impl RaukInfo {
             self.previous_execution = output_info.previous_execution;
             self.generate_output = output_info.generate_output;
             self.flash_output = output_info.flash_output;
-            self.analyze_output = output_info.analyze_output;
+            self.measure_output = output_info.measure_output;
         }
 
         Ok(())

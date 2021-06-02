@@ -1,4 +1,4 @@
-mod analysis;
+mod analyze;
 mod cargo;
 mod cli;
 mod flash;
@@ -84,10 +84,10 @@ fn match_cli_opts(
             let path = measure::wcet_measurement(a, &settings, &metadata)
                 .context("Failed to execute analyze command")?;
             let info = OutputInfo::new(path.clone());
-            metadata.analyze_output = Some(info);
+            metadata.measure_output = Some(info);
         }
         Command::Analyze(input) => {
-            analysis::response_times(input)?;
+            analyze::response_time_analysis(input)?;
         }
         Command::Cleanup => (),
     }

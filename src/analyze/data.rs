@@ -6,7 +6,6 @@ use std::collections::{HashMap, HashSet};
 pub type Priorities = HashMap<String, u8>;
 /// A map of tasks and the resources they are accessing
 pub type TaskResources = HashMap<String, HashSet<String>>;
-
 pub type TaskMap = HashMap<String, Task>;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -24,6 +23,8 @@ pub struct Task {
     pub deadline: u32,
     /// The expected inter-arrival time (in clock cycles)
     pub inter_arrival: u32,
+    /// Trace
+    pub trace: Option<Trace>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,7 +35,10 @@ pub struct Resource {
     pub priority: u8,
 }
 
-pub fn pre_analysis(tasks: &Vec<Task>, traces: &Vec<Trace>) -> (TaskResources, Priorities) {
+pub fn pre_analysis(
+    tasks: &Vec<Task>,
+    traces: &Vec<Trace>,
+) -> (TaskResources, Priorities, Vec<Trace>) {
     let mut task_map: TaskMap = HashMap::new();
     let mut wcet_traces: Vec<Trace> = vec![];
 
@@ -45,13 +49,10 @@ pub fn pre_analysis(tasks: &Vec<Task>, traces: &Vec<Trace>) -> (TaskResources, P
         }
     }
 
-    println!("{:#?}", traces);
-    println!("longest wcet: {:#?}", wcet_traces);
-
     let mut task_resources = get_task_resources(&wcet_traces, &task_map);
     let priorities = get_priorites(&tasks, &mut task_resources);
 
-    (task_resources, priorities)
+    (task_resources, priorities, wcet_traces)
 }
 
 /// Returns the trace of the longest WCET for a task.
@@ -73,7 +74,7 @@ fn get_longest_wcet_trace(task: &Task, traces: &Vec<Trace>) -> Option<Trace> {
 }
 
 /// Returns a map of tasks and the resources they access
-fn get_task_resources(traces: &Vec<Trace>, tasks: &TaskMap) -> TaskResources {
+pub fn get_task_resources(traces: &Vec<Trace>, tasks: &TaskMap) -> TaskResources {
     let mut task_resources: TaskResources = HashMap::new();
 
     for trace in traces {
@@ -99,7 +100,7 @@ fn update_task_resources(task: &Task, traces: &Vec<Trace>, task_resources: &mut 
 }
 
 /// Returns a map of tasks and resources with their respective priorities/ceilings
-fn get_priorites(tasks: &Vec<Task>, task_resources: &mut TaskResources) -> Priorities {
+pub fn get_priorites(tasks: &Vec<Task>, task_resources: &mut TaskResources) -> Priorities {
     let mut priorities: Priorities = HashMap::new();
 
     for task in tasks {
