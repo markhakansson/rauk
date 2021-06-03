@@ -39,6 +39,9 @@ pub struct GenerateInput {
     /// Generate tests in release mode.
     #[structopt(short, long)]
     pub release: bool,
+    /// Enable verbose output
+    #[structopt(short, long)]
+    pub verbose: bool,
     /// Emit all KLEE errors.
     #[structopt(long)]
     pub emit_all_errors: bool,
@@ -56,6 +59,9 @@ pub struct FlashInput {
     /// Build executable in release mode.
     #[structopt(short, long)]
     pub release: bool,
+    /// Enable verbose output
+    #[structopt(short, long)]
+    pub verbose: bool,
     /// The target architecture to build the executable for.
     #[structopt(short, long)]
     pub target: Option<String>,

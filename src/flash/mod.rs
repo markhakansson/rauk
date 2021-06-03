@@ -67,6 +67,10 @@ fn build_replay_harness(
         target_dir.push("debug/");
     }
 
+    if input.verbose {
+        cargo.arg("--verbose");
+    }
+
     let name: String;
     if input.example.is_none() {
         name = input.bin.as_ref().unwrap().to_string();
