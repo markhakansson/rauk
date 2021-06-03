@@ -64,11 +64,14 @@ fn build_test_harness(
         target_dir.push("examples/");
     }
 
+    if input.verbose {
+        cargo.arg("--verbose");
+    }
+
     cargo
         .args(&["--features", "klee-analysis"])
         .args(&["--manifest-path", cargo_path.to_str().unwrap()])
         .args(&["--target", DEFAULT_KLEE_TARGET])
-        //.arg("--message-format=json")
         .arg("--")
         // ignore linking
         .args(&["-C", "linker=true"])
