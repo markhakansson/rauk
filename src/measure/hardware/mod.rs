@@ -104,7 +104,7 @@ fn read_breakpoints(
                     continue;
                 }
                 // If inside a vcell set hardware breakpoint before exiting vcell then continue
-                Breakpoint::Other(OtherBreakpoint::InsideLockClosure) => {
+                Breakpoint::Other(OtherBreakpoint::InsideHardwareRead) => {
                     // Get all vcells in range of this lock and update vcell_stack
                     if let Some(current_vcell) = get_current_vcell_from_lr(core, &vcells)? {
                         // Need to increment with 2 here. Because the last instruction of the

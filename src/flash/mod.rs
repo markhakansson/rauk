@@ -35,7 +35,8 @@ pub fn flash_to_target(
     };
 
     // Flash the card with binary
-    download_file(&mut session, &target_dir.as_path(), Format::Elf)?;
+    download_file(&mut session, &target_dir.as_path(), Format::Elf)
+        .context("Could not flash replay harness to hardware")?;
 
     // Reset the core and halt
     let mut core = session.core(0)?;
@@ -78,6 +79,7 @@ fn build_replay_harness(
     } else {
         name = input.example.as_ref().unwrap().to_string();
         cargo.args(&["--example", name.as_str()]);
+        target_dir.push("examples/");
     }
     target_dir.push(name);
 
