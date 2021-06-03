@@ -38,8 +38,8 @@ pub enum OtherBreakpoint {
     Default = 0,
     /// Inside an rtic task #[task]
     InsideTask = 1,
-    /// Inside a resource closure `x.lock(|x| { //here }`
-    InsideLockClosure = 5,
+    /// Inside a hardware read via a vcell
+    InsideHardwareRead = 5,
     /// Any other breakpoint will be labelled as invalid
     Invalid = 100,
     /// Inside the RTIC lock function
@@ -56,7 +56,7 @@ impl From<u8> for Breakpoint {
             2 => Breakpoint::Entry(EntryBreakpoint::HardwareTaskStart),
             3 => Breakpoint::Entry(EntryBreakpoint::ResourceLockStart),
             4 => Breakpoint::Entry(EntryBreakpoint::SoftwareTaskStart),
-            5 => Breakpoint::Other(OtherBreakpoint::InsideLockClosure),
+            5 => Breakpoint::Other(OtherBreakpoint::InsideHardwareRead),
             251 => Breakpoint::Exit(ExitBreakpoint::SoftwareTaskEnd),
             252 => Breakpoint::Exit(ExitBreakpoint::ResourceLockEnd),
             253 => Breakpoint::Exit(ExitBreakpoint::HardwareTaskEnd),
