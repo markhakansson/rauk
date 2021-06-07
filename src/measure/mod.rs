@@ -1,6 +1,7 @@
 mod breakpoints;
 mod dwarf;
 mod hardware;
+mod objdump;
 mod trace;
 
 use crate::cli::MeasureInput;
@@ -24,6 +25,10 @@ pub fn wcet_measurement(
     let (dwarf_path, ktests_path) = get_analysis_paths(&input, &metadata)?;
     let mut updated_input = input.clone();
     updated_input.get_missing_input(settings);
+
+    {
+        objdump::disassemble(&dwarf_path)?;
+    }
 
     let file = fs::File::open(dwarf_path)?;
     let mmap = unsafe { memmap::Mmap::map(&file)? };
@@ -73,6 +78,7 @@ pub fn wcet_measurement(
     println!("{:#?}", traces);
 
     let output_path = save_traces_to_directory(&traces, &metadata.project_directory)?;
+
     Ok(Some(output_path))
 }
 

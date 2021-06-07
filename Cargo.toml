@@ -6,20 +6,21 @@ edition = "2018"
 description = "RTIC Analysis Using KLEE"
 
 [dependencies]
-anyhow = "1.0.38"
+anyhow = "1.0"
 cargo_toml = { git = "https://gitlab.com/crates.rs/cargo_toml.git"}
 chrono = "0.4"
 ctrlc = { version = "3.0", features = ["termination"] }
-gimli = "0.23.0"
-glob = "0.3.0"
-ktest-parser = "0.1.0"
+gimli = "0.23"
+glob = "0.3"
+ktest-parser = "0.1"
 log = "0.4"
-memmap = "0.7.0"
-object = "0.23.0"
-probe-rs = { version = "0.10" }
+memmap = "0.7"
+object = "0.23"
+#probe-rs = { version = "0.10" }
+probe-rs = { git = "https://github.com/probe-rs/probe-rs.git" }
 rustc-demangle = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-simplelog = "^0.10.0"
-structopt = "0.3.21"
-toml = "0.5.8"
+simplelog = "^0.10"
+structopt = "0.3"
+toml = "0.5"

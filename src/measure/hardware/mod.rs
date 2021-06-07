@@ -70,7 +70,9 @@ fn read_breakpoints(
         core.wait_for_core_halted(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))
             .context("Core does not halt. The program might have panicked?")?;
 
-        if core_utils::current_pc(core)? == current_hw_bkpt && current_hw_bkpt != 0 {
+        let current_pc = core_utils::current_pc(core)?;
+
+        if current_pc == current_hw_bkpt && current_hw_bkpt != 0 {
             // Clear current hw breakpoint. Overwrite r0 with KTestObject value
             core.clear_hw_breakpoint(current_hw_bkpt)?;
             current_hw_bkpt = 0;
@@ -83,7 +85,8 @@ fn read_breakpoints(
                 "Core halted, but not due to breakpoint. Can't continue with analysis."
             ));
         } else {
-            let bkpt = Breakpoint::from(core_utils::read_breakpoint_value(core)?);
+            let bkpt_val = core_utils::read_breakpoint_value(core)?;
+            let bkpt = Breakpoint::from(bkpt_val);
             match bkpt {
                 // On ReplayStart the loop is complete
                 Breakpoint::Other(OtherBreakpoint::ReplayStart) => break,
