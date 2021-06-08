@@ -21,14 +21,15 @@ impl Objdump {
     }
 }
 
-pub fn disassemble(path: &PathBuf) -> Result<()> {
+/// Disassembles a binary at `binary_path` using `llvm-bojdump`
+pub fn disassemble(binary_path: &PathBuf) -> Result<Objdump> {
     let mut objdump = Command::new("llvm-objdump");
 
     objdump
         .arg("--disassemble")
         .arg("--print-imm-hex")
         .arg("--no-show-raw-insn")
-        .arg(path.to_str().unwrap());
+        .arg(binary_path.to_str().unwrap());
 
     let output = objdump.output()?;
 
@@ -40,6 +41,7 @@ pub fn disassemble(path: &PathBuf) -> Result<()> {
 
     let mut map: HashMap<u64, String> = HashMap::new();
 
+    // find and add only addresses/instructions to the map
     for i in iter {
         let line = i.trim();
         if line.starts_with("8") {
@@ -47,16 +49,13 @@ pub fn disassemble(path: &PathBuf) -> Result<()> {
                 let (address, instruction) = line.split_at(index);
                 let instruction = instruction.strip_prefix(":").unwrap();
                 let instruction = instruction.trim();
-                println!("address: {:?}", &address);
                 let address = u64::from_str_radix(address, 16)?;
                 map.insert(address, instruction.to_string());
             }
         }
     }
 
-    println!("{:#x?}", map);
+    let result = Objdump { instructions: map };
 
-    // use .output not .status !
-
-    Ok(())
+    Ok(result)
 }

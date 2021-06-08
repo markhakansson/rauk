@@ -25,6 +25,7 @@ pub fn measure_replay_harness(
     subprograms: &Vec<Subprogram>,
     resource_locks: &Vec<Subroutine>,
     vcells: &mut Vec<Subroutine>,
+    release: bool,
 ) -> Result<Vec<Vec<MeasurementResult>>> {
     let mut measurements: Vec<Vec<MeasurementResult>> = Vec::new();
 
