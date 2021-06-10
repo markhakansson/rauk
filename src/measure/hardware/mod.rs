@@ -2,6 +2,7 @@ mod helpers;
 
 use super::breakpoints::{Breakpoint, OtherBreakpoint};
 use super::dwarf::{self, ObjectLocationMap, Subprogram, Subroutine};
+use super::objdump::Objdump;
 use crate::utils::core as core_utils;
 use crate::utils::klee::get_vcell_ktestobjects;
 use anyhow::{anyhow, Context, Result};
@@ -26,6 +27,7 @@ pub fn measure_replay_harness(
     resource_locks: &Vec<Subroutine>,
     vcells: &mut Vec<Subroutine>,
     release: bool,
+    objdump: &Objdump,
 ) -> Result<Vec<Vec<MeasurementResult>>> {
     let mut measurements: Vec<Vec<MeasurementResult>> = Vec::new();
 
@@ -35,7 +37,16 @@ pub fn measure_replay_harness(
         run_to_replay_start(core).context("Could not continue to replay start")?;
         write_replay_objects(core, &resource_addresses, &ktest)
             .with_context(|| format!("Could not write to memory with KTest: {:?}", &ktest))?;
-        let bkpts = read_breakpoints(core, &subprograms, &resource_locks, vcells, &ktest)?;
+
+        let bkpts = read_breakpoints(
+            core,
+            &subprograms,
+            &resource_locks,
+            vcells,
+            &ktest,
+            release,
+            objdump,
+        )?;
         measurements.push(bkpts);
     }
 
@@ -57,6 +68,8 @@ fn read_breakpoints(
     resource_locks: &Vec<Subroutine>,
     vcells: &Vec<Subroutine>,
     ktest: &KTest,
+    release: bool,
+    objdump: &Objdump,
 ) -> Result<Vec<MeasurementResult>> {
     let mut measurements: Vec<MeasurementResult> = Vec::new();
     let name = BKPT_UNKNOWN_NAME.to_string();
@@ -74,12 +87,17 @@ fn read_breakpoints(
         let current_pc = core_utils::current_pc(core)?;
 
         if current_pc == current_hw_bkpt && current_hw_bkpt != 0 {
-            // Clear current hw breakpoint. Overwrite r0 with KTestObject value
+            // Clear current hw breakpoint.
             core.clear_hw_breakpoint(current_hw_bkpt)?;
+            let prev_insn_addr = (current_hw_bkpt - 2) as u64;
+            let instruction = objdump.get_instruction(&prev_insn_addr).unwrap();
+            let reg = parse_load_register(&instruction).unwrap();
+
             current_hw_bkpt = 0;
+
             // It is assumed vcells occur in order so just pop the first test
             if let Some(test) = test_stack.pop() {
-                write_vcell_test_to_register(core, &test)?;
+                write_vcell_test_to_register(core, reg, &test)?;
             }
         } else if !core_utils::breakpoint_at_pc(core)? {
             return Err(anyhow!(
@@ -191,17 +209,43 @@ fn write_replay_objects(
     Ok(())
 }
 
-/// Writes a test vector for a vcell reading to the return register.
+/// Writes a test vector for a vcell reading to the given register
 ///
 /// * `core` - A connected probe-rs _core_
+/// * `register` - The register to write to. Should be within the register range 0-15.
 /// * `test` - The test vector
-fn write_vcell_test_to_register(core: &mut Core, test: &KTestObject) -> Result<()> {
+fn write_vcell_test_to_register(core: &mut Core, register: u16, test: &KTestObject) -> Result<()> {
     if test.num_bytes == 4 {
         let bytes: [u8; 4] = [test.bytes[0], test.bytes[1], test.bytes[2], test.bytes[3]];
         let data = u32::from_le_bytes(bytes);
-        core.write_core_reg(CoreRegisterAddress(0), data)?;
+        core.write_core_reg(CoreRegisterAddress(register), data)?;
     } else {
         // Log a warning here
     }
     Ok(())
+}
+
+/// Parses the `Rt` register that the load instruction is loading to.
+///
+/// * `insn` - The load instruction to parse
+fn parse_load_register(insn: &String) -> Option<u16> {
+    let mut split = insn.split(&[' ', ','][..]);
+    let mut reg_no: Option<u16> = None;
+    if let Some(asm) = split.next() {
+        if asm == "ldr" {
+            let reg = split.next().unwrap();
+            reg_no = Some(match reg {
+                "r0" => 0,
+                "r1" => 1,
+                "r2" => 2,
+                "r3" => 3,
+                "r4" => 4,
+                "r5" => 5,
+                "r6" => 6,
+                "r7" => 7,
+                _ => 0,
+            })
+        }
+    }
+    reg_no
 }

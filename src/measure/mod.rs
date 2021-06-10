@@ -47,10 +47,15 @@ pub fn wcet_measurement(
     // Create `EndianSlice`s for all of the sections.
     let dwarf = dwarf_cow.borrow(&borrow_section);
 
+    println!("parsing ktests");
     let ktests = klee::parse_ktest_files(&ktests_path)?;
+    println!("getting replay addresses");
     let addr = dwarf::get_replay_addresses(&dwarf)?;
+    println!("getting subprograms");
     let subprograms = dwarf::get_subprograms(&dwarf)?;
+    println!("getting subroutines");
     let subroutines = dwarf::get_subroutines(&dwarf)?;
+    println!("getting resources");
     let resources = dwarf::get_resources_from_subroutines(&subroutines);
 
     let mut vcells = dwarf::get_vcell_from_subroutines(&subroutines);
@@ -71,6 +76,7 @@ pub fn wcet_measurement(
         &resources,
         &mut vcells,
         input.release,
+        &objdump,
     )
     .context("Could not complete the measurement of the replay harness")?;
 

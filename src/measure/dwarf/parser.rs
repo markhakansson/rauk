@@ -1,5 +1,5 @@
 use super::types::{ObjectLocation, Subprogram, Subroutine};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use gimli::{
     read::{
         AttributeValue, DebuggingInformationEntry, Dwarf, EndianSlice, EvaluationResult, Location,
@@ -9,6 +9,11 @@ use gimli::{
 };
 use rustc_demangle::demangle;
 
+/// Parses all `DW_AT_variable`s in the current DWARF unit if there are any.
+///
+/// * `dwarf` -The DWARF object
+/// * `unit`- The current unit
+/// * `header` - The current header
 pub fn parse_variable_entries(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     unit: &Unit<EndianSlice<RunTimeEndian>>,
@@ -29,7 +34,9 @@ pub fn parse_variable_entries(
     Ok(objects)
 }
 
-pub fn parse_object_location(
+/// Tries to find the variable information (location and name) for the
+/// current entry if it is a variable.
+fn parse_object_location(
     entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     header: &UnitHeader<EndianSlice<RunTimeEndian>>,
@@ -89,6 +96,10 @@ pub fn parse_object_location(
     Ok(None)
 }
 
+/// Parses the `DW_AT_subprogram`s in the current DWARF unit if there are any.
+///
+/// * `dwarf` - The DWARF object
+/// * `unit` - The current unit
 pub fn parse_subprograms(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     unit: &Unit<EndianSlice<RunTimeEndian>>,
@@ -107,7 +118,9 @@ pub fn parse_subprograms(
     Ok(programs)
 }
 
-pub fn parse_subprogram(
+/// Tries to parse a `DW_TAG_subprogram` in the current DWARF entry.
+/// If the current entry is not a subprogram it will simply return `None`.
+fn parse_subprogram(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
 ) -> Result<Option<Subprogram>> {
@@ -177,6 +190,12 @@ pub fn parse_subprogram(
     Ok(subprogram)
 }
 
+/// Parses all inlined subroutines in the current unit of the DWARF object. Tries to keep all
+/// relevant subroutines and discards some only.
+///
+/// * `dwarf` - The DWARF object
+/// * `unit`- The current unit
+///
 pub fn parse_inlined_subroutines(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     unit: &Unit<EndianSlice<RunTimeEndian>>,
@@ -187,7 +206,12 @@ pub fn parse_inlined_subroutines(
 
     while let Some((_, entry)) = entries.next_dfs()? {
         if entry.tag() == gimli::DW_TAG_inlined_subroutine {
-            match parse_inlined_subroutine(dwarf, unit, header, entry)? {
+            match parse_inlined_subroutine(dwarf, unit, header, entry).with_context(|| {
+                format!(
+                    "Failed to parse the inlined subroutine of entry: {:?}",
+                    &entry
+                )
+            })? {
                 Some(subroutine) => subroutines.push(subroutine),
                 None => (),
             }
@@ -196,7 +220,9 @@ pub fn parse_inlined_subroutines(
     Ok(subroutines)
 }
 
-pub fn parse_inlined_subroutine(
+/// Parse a `DW_AT_inlined_subroutine` if it contains a name and an
+/// address range.
+fn parse_inlined_subroutine(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     unit: &Unit<EndianSlice<RunTimeEndian>>,
     header: &UnitHeader<EndianSlice<RunTimeEndian>>,
@@ -215,7 +241,8 @@ pub fn parse_inlined_subroutine(
             match attr.value() {
                 AttributeValue::UnitRef(ur) => {
                     let origin = header.entry(&abbrv, ur)?;
-                    let origin_name = parse_abstract_origin(dwarf, &origin)?;
+                    let origin_name = parse_abstract_origin(dwarf, &origin)
+                        .context("Could not get abstract origin for subroutine")?;
                     name = Some(origin_name);
                 }
                 _ => (),
@@ -233,7 +260,9 @@ pub fn parse_inlined_subroutine(
         } else if attr.name() == gimli::constants::DW_AT_ranges {
             match attr.value() {
                 AttributeValue::RangeListsRef(offset) => {
-                    let mut rngs = dwarf.ranges(unit, offset)?;
+                    let mut rngs = dwarf
+                        .ranges(unit, offset)
+                        .context("Could not get range for subroutine")?;
                     while let Some(r) = rngs.next()? {
                         ranges.push((r.begin, r.end));
                     }
@@ -264,7 +293,9 @@ pub fn parse_inlined_subroutine(
     Ok(subroutine)
 }
 
-pub fn parse_abstract_origin(
+/// Get the name of a `DW_AT_abstract_origin` label. If found
+/// returns the demangled name.
+fn parse_abstract_origin(
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
 ) -> Result<String> {

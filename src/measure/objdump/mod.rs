@@ -6,13 +6,14 @@ use std::{
 };
 
 /// The results/output of llvm-objdump on the rtic binary
+#[derive(Debug, Clone)]
 pub struct Objdump {
     instructions: HashMap<u64, String>,
 }
 
 impl Objdump {
     /// Returns the instruction at the given address if it exists
-    pub fn get_instruction(self, address: &u64) -> Option<String> {
+    pub fn get_instruction(&self, address: &u64) -> Option<String> {
         if let Some(instruction) = self.instructions.get(address) {
             Some(instruction.clone())
         } else {

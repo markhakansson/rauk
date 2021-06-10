@@ -17,8 +17,12 @@ pub fn generate_klee_tests(input: &GenerateInput, metadata: &RaukInfo) -> Result
     cargo_path.push("Cargo.toml");
 
     // Build the project
-    build_test_harness(&input, &mut cargo_path, &mut target_dir, &mut project_name)
+    let status = build_test_harness(&input, &mut cargo_path, &mut target_dir, &mut project_name)
         .context("Failed to build the test harness")?;
+
+    if !status.success() {
+        return Err(anyhow!("Failed to build the test harness"));
+    }
 
     let ll = fetch_latest_ll_file(&mut target_dir, &mut project_name)
         .context("Failed to retrieve the test harness' .ll file")?;
