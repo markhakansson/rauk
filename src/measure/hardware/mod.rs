@@ -10,13 +10,19 @@ use helpers::*;
 use ktest_parser::{KTest, KTestObject};
 use probe_rs::{Core, CoreRegisterAddress, MemoryInterface};
 
+const HALT_TIMEOUT_SECONDS: u64 = 10;
+
 type ObjectName = String;
 type CycleCount = u32;
 /// Result of measuring on hardware. Containing the Breakpoint type and the name of the object
 /// (such as a Task name or resources name) and the cycle count at that breakpoint.
 pub type MeasurementResult = (Breakpoint, ObjectName, CycleCount);
 
-const HALT_TIMEOUT_SECONDS: u64 = 10;
+enum LoopAction {
+    Break,
+    Continue,
+    Nothing,
+}
 
 /// Runs the replay harness and measures the clock cycles.
 pub fn measure_replay_harness(
@@ -26,15 +32,15 @@ pub fn measure_replay_harness(
     subprograms: &Vec<Subprogram>,
     resource_locks: &Vec<Subroutine>,
     vcells: &mut Vec<Subroutine>,
-    release: bool,
     objdump: &Objdump,
+    release: bool,
 ) -> Result<Vec<Vec<MeasurementResult>>> {
     let mut measurements: Vec<Vec<MeasurementResult>> = Vec::new();
 
-    // Measurement on hardware
+    // Measure the replay harness using all generated test vectors
     for ktest in ktests {
         // Continue until reaching BKPT 255 (replaystart)
-        run_to_replay_start(core).context("Could not continue to replay start")?;
+        run_to_replay_start(core).context("Could not continue to the ReplayStart breakpoint")?;
         write_replay_objects(core, &resource_addresses, &ktest)
             .with_context(|| format!("Could not write to memory with KTest: {:?}", &ktest))?;
 
@@ -44,8 +50,8 @@ pub fn measure_replay_harness(
             &resource_locks,
             vcells,
             &ktest,
-            release,
             objdump,
+            release,
         )?;
         measurements.push(bkpts);
     }
@@ -62,46 +68,60 @@ pub fn measure_replay_harness(
 /// * `resource_locks` - A list of all RTIC resource locks
 /// * `vcells` - A list of all hardware peripheral accesses
 /// * `ktest` - The test to replay
+/// * `objdump` - The disassembled instructions of the replay binary
 fn read_breakpoints(
     core: &mut Core,
     subprograms: &Vec<Subprogram>,
     resource_locks: &Vec<Subroutine>,
     vcells: &Vec<Subroutine>,
     ktest: &KTest,
-    release: bool,
     objdump: &Objdump,
+    release: bool,
 ) -> Result<Vec<MeasurementResult>> {
     let mut measurements: Vec<MeasurementResult> = Vec::new();
     let name = BKPT_UNKNOWN_NAME.to_string();
 
     // For HW accesses
     let mut current_hw_bkpt: u32 = 0;
-    let mut test_stack = get_vcell_ktestobjects(ktest);
-    test_stack.reverse();
+    let mut vcell_test_vectors = get_vcell_ktestobjects(ktest);
+    vcell_test_vectors.reverse();
 
     loop {
-        core_utils::run(core).context("Could not continue from replay start")?;
+        core_utils::run(core).context("Could not continue from the ReplayStart breakpoint")?;
         core.wait_for_core_halted(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))
-            .context("Core does not halt. The program might have panicked?")?;
+            .context(
+                "Core does not halt. Your application might be stuck in a non-terminating loop?",
+            )?;
 
         let current_pc = core_utils::current_pc(core)?;
+        println!("current pc: {:x}", &current_pc);
 
+        //
         if current_pc == current_hw_bkpt && current_hw_bkpt != 0 {
-            // Clear current hw breakpoint.
             core.clear_hw_breakpoint(current_hw_bkpt)?;
-            let prev_insn_addr = (current_hw_bkpt - 2) as u64;
-            let instruction = objdump.get_instruction(&prev_insn_addr).unwrap();
-            let reg = parse_load_register(&instruction).unwrap();
+            // Fetch the register to overwrite from the previous instruction
+            let reg = if release {
+                let prev_insn_addr = (current_hw_bkpt - 2) as u64;
+                let instruction = objdump.get_instruction(&prev_insn_addr).unwrap();
+                {
+                    println!("hardware bkpt: {:x?}", &current_hw_bkpt);
+                }
+
+                parse_load_register(&instruction).unwrap()
+            } else {
+                0
+            };
 
             current_hw_bkpt = 0;
 
             // It is assumed vcells occur in order so just pop the first test
-            if let Some(test) = test_stack.pop() {
+            if let Some(test) = vcell_test_vectors.pop() {
                 write_vcell_test_to_register(core, reg, &test)?;
             }
+        // Catch halts that are not breakpoints
         } else if !core_utils::breakpoint_at_pc(core)? {
             return Err(anyhow!(
-                "Core halted, but not due to breakpoint. Can't continue with analysis."
+                "Core halted, but not due to a breakpoint. Can't continue with analysis. Core status: {:?}", core.status()?
             ));
         } else {
             let bkpt_val = core_utils::read_breakpoint_value(core)?;
@@ -128,15 +148,18 @@ fn read_breakpoints(
                 // If inside a vcell set hardware breakpoint before exiting vcell then continue
                 Breakpoint::Other(OtherBreakpoint::InsideHardwareRead) => {
                     // Get all vcells in range of this lock and update vcell_stack
-                    if let Some(current_vcell) = get_current_vcell_from_lr(core, &vcells)? {
+                    if let Some(mut current_vcell) = get_current_vcell_from_lr(core, &vcells)? {
                         // Need to increment with 2 here. Because the last instruction of the
                         // vcell function will overwrite `r0` and we need to step over it.
                         // Then overwrite `r0` ourselves!
+                        println!("vcell: {:x?}", &current_vcell);
                         if current_vcell.ranges.is_empty() {
                             return Err(anyhow!("Subroutine has no address ranges"));
                         }
-                        let (_, high_pc) = current_vcell.ranges[0];
-                        current_hw_bkpt = high_pc as u32 + 2;
+                        let (_, high_pc) = current_vcell.ranges.pop().unwrap();
+                        //current_hw_bkpt = high_pc as u32 + 2;
+                        current_hw_bkpt = high_pc as u32;
+                        println!("setting hardware breakpoint at: {:x?}", &current_hw_bkpt);
                         core.set_hw_breakpoint(current_hw_bkpt)?;
                     }
 
@@ -155,13 +178,65 @@ fn read_breakpoints(
     Ok(measurements)
 }
 
+fn handle_breakpoint(
+    core: &mut Core,
+    subprograms: &Vec<Subprogram>,
+    resource_locks: &Vec<Subroutine>,
+    vcells: &Vec<Subroutine>,
+    measurements: &mut Vec<MeasurementResult>,
+    current_hw_bkpt: &mut u32,
+) -> Result<LoopAction> {
+    let bkpt_val = core_utils::read_breakpoint_value(core)?;
+    let bkpt = Breakpoint::from(bkpt_val);
+
+    let status = match bkpt {
+        // On ReplayStart the loop is complete
+        Breakpoint::Other(OtherBreakpoint::ReplayStart) => LoopAction::Break,
+        // Save the name and continue to the next loop iteration
+        Breakpoint::Other(OtherBreakpoint::InsideTask) => {
+            let name = read_breakpoint_task_name(core, &subprograms)?;
+            let (b, _, u) = measurements.pop().unwrap();
+            measurements.push((b, name, u));
+
+            LoopAction::Continue
+        }
+        // Save the name and continue to the next loop iteration
+        Breakpoint::Other(OtherBreakpoint::InsideLock) => {
+            let name = read_breakpoint_lock_name(core, &resource_locks)?;
+            let (b, _, u) = measurements.pop().unwrap();
+            measurements.push((b, name, u));
+
+            LoopAction::Continue
+        }
+        // If inside a vcell set hardware breakpoint before exiting vcell then continue
+        Breakpoint::Other(OtherBreakpoint::InsideHardwareRead) => {
+            // Get all vcells in range of this lock and update vcell_stack
+            if let Some(current_vcell) = get_current_vcell_from_lr(core, &vcells)? {
+                // Need to increment with 2 here. Because the last instruction of the
+                // vcell function will overwrite `r0` and we need to step over it.
+                // Then overwrite `r0` ourselves!
+                if current_vcell.ranges.is_empty() {
+                    return Err(anyhow!("Subroutine has no address ranges"));
+                }
+                let (_, high_pc) = current_vcell.ranges[0];
+                *current_hw_bkpt = high_pc as u32 + 2;
+                core.set_hw_breakpoint(*current_hw_bkpt)?;
+            }
+
+            LoopAction::Continue
+        }
+        // Ignore everything else for now
+        _ => LoopAction::Nothing,
+    };
+    Ok(status)
+}
+
 /// Runs to where the replay harness starts. Also runs past any other breakpoints
 /// on the way, should there be any.
 ///
 /// * `core` - A connected probe-rs _core_
 fn run_to_replay_start(core: &mut Core) -> Result<()> {
-    // Wait for core to halt on a breakpoint. If it doesn't
-    // something is wrong.
+    // Wait for core to halt on a breakpoint. If it doesn't something is wrong.
     core.wait_for_core_halted(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))?;
     loop {
         let imm = core_utils::read_breakpoint_value(core)?;
@@ -193,7 +268,9 @@ fn write_replay_objects(
             Some(addr) => {
                 let a = addr.unwrap() as u32;
                 let slice = test.bytes.as_slice();
-                core.write_8(a, slice)?;
+                core.write_8(a, slice).with_context(|| {
+                    format!("Could not write {:?} to memory address {:x}", &slice, &a)
+                })?;
                 core.flush()?;
             }
             None => {
@@ -218,7 +295,13 @@ fn write_vcell_test_to_register(core: &mut Core, register: u16, test: &KTestObje
     if test.num_bytes == 4 {
         let bytes: [u8; 4] = [test.bytes[0], test.bytes[1], test.bytes[2], test.bytes[3]];
         let data = u32::from_le_bytes(bytes);
-        core.write_core_reg(CoreRegisterAddress(register), data)?;
+        core.write_core_reg(CoreRegisterAddress(register), data)
+            .with_context(|| {
+                format!(
+                    "Could not write data {:?} to register r{}",
+                    &data, &register
+                )
+            })?;
     } else {
         // Log a warning here
     }
@@ -232,19 +315,20 @@ fn parse_load_register(insn: &String) -> Option<u16> {
     let mut split = insn.split(&[' ', ','][..]);
     let mut reg_no: Option<u16> = None;
     if let Some(asm) = split.next() {
-        if asm == "ldr" {
+        println!("{:?}", &asm);
+        if asm.contains("ld") {
             let reg = split.next().unwrap();
-            reg_no = Some(match reg {
-                "r0" => 0,
-                "r1" => 1,
-                "r2" => 2,
-                "r3" => 3,
-                "r4" => 4,
-                "r5" => 5,
-                "r6" => 6,
-                "r7" => 7,
-                _ => 0,
-            })
+            reg_no = match reg {
+                "r0" => Some(0),
+                "r1" => Some(1),
+                "r2" => Some(2),
+                "r3" => Some(3),
+                "r4" => Some(4),
+                "r5" => Some(5),
+                "r6" => Some(6),
+                "r7" => Some(7),
+                _ => None,
+            }
         }
     }
     reg_no

@@ -49,6 +49,13 @@ pub fn wcet_measurement(
 
     println!("parsing ktests");
     let ktests = klee::parse_ktest_files(&ktests_path)?;
+
+    if ktests.is_empty() {
+        return Err(anyhow!(
+            "No test vectors found. Cannot continue with WCET measurement without test vectors"
+        ));
+    }
+
     println!("getting replay addresses");
     let addr = dwarf::get_replay_addresses(&dwarf)?;
     println!("getting subprograms");
@@ -59,11 +66,13 @@ pub fn wcet_measurement(
     let resources = dwarf::get_resources_from_subroutines(&subroutines);
 
     let mut vcells = dwarf::get_vcell_from_subroutines(&subroutines);
+    println!("vcells:");
+    println!("{:x?}", &vcells);
     let mut session = if let Some(chip) = updated_input.chip {
         core_utils::open_and_attach_probe(&chip)?
     } else {
         return Err(anyhow!(
-            "Can't attach to hardware. No chip type given as input"
+            "Cannot attach to hardware. No chip type given as input"
         ));
     };
     let mut core = session.core(0)?;
@@ -75,8 +84,8 @@ pub fn wcet_measurement(
         &subprograms,
         &resources,
         &mut vcells,
-        input.release,
         &objdump,
+        input.release,
     )
     .context("Could not complete the measurement of the replay harness")?;
 

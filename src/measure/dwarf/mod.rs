@@ -128,12 +128,8 @@ pub fn get_subroutines_address_in_range(
     let mut ok: Vec<Subroutine> = vec![];
 
     for subroutine in subroutines {
-        // If in range, push a new subroutine copy with only that range to result
-        if let Some(res) = subroutine.range_from_address(address) {
-            ok.push(Subroutine {
-                name: subroutine.name.clone(),
-                ranges: vec![res],
-            });
+        if subroutine.range_from_address(address).is_some() {
+            ok.push(subroutine.clone());
         }
     }
 

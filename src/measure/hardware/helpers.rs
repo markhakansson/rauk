@@ -30,6 +30,7 @@ pub fn get_current_vcell_from_lr(
     let lr = core.registers().return_address();
     // Decrement with 1 because otherwise it will point outside the vcell reading
     let lr_val = core.read_core_reg(lr)? - 1;
+    println!("LR value is: {:x?}", &lr_val);
 
     let in_range = dwarf::get_subroutines_address_in_range(&vcells, lr_val as u64)?;
     let optimal = dwarf::get_shortest_range_subroutine(&in_range)?;

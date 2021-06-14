@@ -82,7 +82,7 @@ pub struct MeasureInput {
     /// The name of the chip to flash to.
     #[structopt(short, long)]
     pub chip: Option<String>,
-    /// Measure a flashed binary compiled in relesae
+    /// Measure a flashed binary compiled in release mode.
     #[structopt(short, long)]
     pub release: bool,
 }
