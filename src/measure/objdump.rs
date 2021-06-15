@@ -1,9 +1,5 @@
-use anyhow::{Context, Result};
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    process::{Command, ExitStatus},
-};
+use anyhow::Result;
+use std::{collections::HashMap, path::PathBuf, process::Command};
 
 /// The results/output of llvm-objdump on the rtic binary
 #[derive(Debug, Clone)]
