@@ -1,7 +1,7 @@
 mod parser;
 mod types;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use gimli::{
     read::{Dwarf, EndianSlice},
     RunTimeEndian,
@@ -110,13 +110,17 @@ pub fn get_subroutines(dwarf: &Dwarf<EndianSlice<RunTimeEndian>>) -> Result<Vec<
 
     while let Some(header) = iter.next()? {
         let unit = dwarf.unit(header)?;
-        let mut result = parser::parse_inlined_subroutines(dwarf, &unit, &header)?;
+        let mut result = parser::parse_inlined_subroutines(dwarf, &unit, &header)
+            .context("Failed to parse DW_inlined_subroutines")?;
         subroutines.append(&mut result);
     }
     Ok(subroutines)
 }
 
 /// Returns a list of subroutines where the given address is in range.
+///
+/// * `subroutines` - A list of subroutines
+/// * `address` - The address to find subroutines within the range
 pub fn get_subroutines_address_in_range(
     subroutines: &Vec<Subroutine>,
     address: u64,
@@ -124,12 +128,8 @@ pub fn get_subroutines_address_in_range(
     let mut ok: Vec<Subroutine> = vec![];
 
     for subroutine in subroutines {
-        // If in range, push a new subroutine copy with only that range to result
-        if let Some(res) = subroutine.range_from_address(address) {
-            ok.push(Subroutine {
-                name: subroutine.name.clone(),
-                ranges: vec![res],
-            });
+        if subroutine.range_from_address(address).is_some() {
+            ok.push(subroutine.clone());
         }
     }
 
@@ -164,7 +164,7 @@ pub fn get_resources_from_subroutines(subroutines: &Vec<Subroutine>) -> Vec<Subr
     let mut resources: Vec<Subroutine> = Vec::new();
 
     for subroutine in subroutines {
-        if let Some(resource_name) = parse_resource_name_from_abstract(subroutine.name.clone()) {
+        if let Some(resource_name) = parse_resource_name_from_lock(subroutine.name.clone()) {
             let mut copy = subroutine.clone();
             copy.name = resource_name;
             resources.push(copy);
@@ -174,7 +174,10 @@ pub fn get_resources_from_subroutines(subroutines: &Vec<Subroutine>) -> Vec<Subr
     resources
 }
 
-fn parse_resource_name_from_abstract(unmangled_name: String) -> Option<String> {
+/// Try to parse the name of the RTIC resource from its unmangled name in the DWARF format.
+/// If the name is not an RTIC resource it will return `None`.
+fn parse_resource_name_from_lock(unmangled_name: String) -> Option<String> {
+    // Currently all resource locks implement `rtic_core::Mutex` so we search for it
     let mut v: Vec<&str> = unmangled_name.split("impl rtic_core::Mutex for ").collect();
     if v.len() > 1 {
         match v.pop() {
@@ -205,9 +208,6 @@ pub fn get_vcell_from_subroutines(subroutines: &Vec<Subroutine>) -> Vec<Subrouti
             }
         }
     }
-
-    // This might be unneccessary but it's better to be safe than sorry
-    //vcells.sort_by(|a, b| a.low_pc.cmp(&b.low_pc));
 
     vcells
 }

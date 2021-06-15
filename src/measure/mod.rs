@@ -1,8 +1,11 @@
 mod breakpoints;
 mod dwarf;
 mod hardware;
+mod objdump;
 mod trace;
 
+use self::dwarf::{ObjectLocationMap, Subprogram, Subroutine};
+use self::objdump::Objdump;
 use crate::cli::MeasureInput;
 use crate::metadata::RaukInfo;
 use crate::utils::{core as core_utils, klee};
@@ -16,6 +19,29 @@ use trace::Trace;
 
 const RAUK_JSON_OUTPUT: &str = "rauk.json";
 
+/// Contains information about the RTIC application mostly
+/// constructed from the binary's DWARF information.
+pub struct AppInfo {
+    /// A list of the app's subprograms
+    subprograms: Vec<Subprogram>,
+    /// A list of all the resource locks in the app
+    resource_locks: Vec<Subroutine>,
+    /// A map of the variables stored in flash
+    variables: ObjectLocationMap,
+    /// A list of all vcell readings
+    vcells: Vec<Subroutine>,
+    /// The complete objdump of the app
+    objdump: Objdump,
+    /// Is the app compile in release mode
+    release: bool,
+}
+
+/// Measure the replay harness using the generated test vectors to get a
+/// WCET for each user task in the RTIC application.
+///
+/// * `input` - Input for this command
+/// * `settings` - The settings file for Rauk
+/// * `metadata` - The metadata for Rauk
 pub fn wcet_measurement(
     input: &MeasureInput,
     settings: &RaukSettings,
@@ -25,7 +51,7 @@ pub fn wcet_measurement(
     let mut updated_input = input.clone();
     updated_input.get_missing_input(settings);
 
-    let file = fs::File::open(dwarf_path)?;
+    let file = fs::File::open(&dwarf_path)?;
     let mmap = unsafe { memmap::Mmap::map(&file)? };
     let object = object::File::parse(&*mmap)?;
     let endian = if object.is_little_endian() {
@@ -45,34 +71,45 @@ pub fn wcet_measurement(
     let dwarf = dwarf_cow.borrow(&borrow_section);
 
     let ktests = klee::parse_ktest_files(&ktests_path)?;
+    if ktests.is_empty() {
+        return Err(anyhow!(
+            "No test vectors found. Cannot continue with WCET measurement without test vectors"
+        ));
+    }
+
     let addr = dwarf::get_replay_addresses(&dwarf)?;
     let subprograms = dwarf::get_subprograms(&dwarf)?;
     let subroutines = dwarf::get_subroutines(&dwarf)?;
     let resources = dwarf::get_resources_from_subroutines(&subroutines);
-    let mut vcells = dwarf::get_vcell_from_subroutines(&subroutines);
+    let vcells = dwarf::get_vcell_from_subroutines(&subroutines);
+    let objdump = objdump::disassemble(&dwarf_path).context("Could not disassemble the binary")?;
+    let app = AppInfo {
+        subprograms,
+        resource_locks: resources,
+        variables: addr,
+        vcells,
+        objdump,
+        release: input.release,
+    };
+
     let mut session = if let Some(chip) = updated_input.chip {
         core_utils::open_and_attach_probe(&chip)?
     } else {
         return Err(anyhow!(
-            "Can't attach to hardware. No chip type given as input"
+            "Cannot attach to hardware. No chip type given as input"
         ));
     };
     let mut core = session.core(0)?;
 
-    let measurements = hardware::measure_replay_harness(
-        &mut core,
-        &ktests,
-        &addr,
-        &subprograms,
-        &resources,
-        &mut vcells,
-    )
-    .context("Could not complete the measurement of the replay harness")?;
+    let measurements = hardware::measure_replay_harness(&mut core, &ktests, &app)
+        .context("Could not complete the measurement of the replay harness")?;
+
     let traces = post_measurement_analysis(measurements)
         .context("Could not complete the analysis of measurement data")?;
     println!("{:#?}", traces);
 
     let output_path = save_traces_to_directory(&traces, &metadata.project_directory)?;
+
     Ok(Some(output_path))
 }
 
