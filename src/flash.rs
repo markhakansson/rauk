@@ -1,5 +1,5 @@
 use crate::cli::FlashInput;
-use crate::metadata::RaukInfo;
+use crate::metadata::RaukMetadata;
 use crate::settings::RaukSettings;
 use crate::utils::core as core_utils;
 use anyhow::{anyhow, Context, Result};
@@ -14,7 +14,7 @@ const HALT_TIMEOUT_SECONDS: u64 = 5;
 pub fn flash_to_target(
     input: &FlashInput,
     settings: &RaukSettings,
-    metadata: &RaukInfo,
+    metadata: &RaukMetadata,
 ) -> Result<PathBuf> {
     let mut target_dir = metadata.project_directory.clone();
     let mut cargo_path = metadata.project_directory.clone();
@@ -61,7 +61,7 @@ fn build_replay_harness(
         target_dir.push(target);
     }
 
-    if input.release {
+    if input.is_release() {
         cargo.arg("--release");
         target_dir.push("release/");
     } else {
@@ -73,11 +73,11 @@ fn build_replay_harness(
     }
 
     let name: String;
-    if input.example.is_none() {
-        name = input.bin.as_ref().unwrap().to_string();
+    if input.build.example.is_none() {
+        name = input.build.bin.as_ref().unwrap().to_string();
         cargo.args(&["--bin", name.as_str()]);
     } else {
-        name = input.example.as_ref().unwrap().to_string();
+        name = input.build.example.as_ref().unwrap().to_string();
         cargo.args(&["--example", name.as_str()]);
         target_dir.push("examples/");
     }

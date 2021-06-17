@@ -1,15 +1,13 @@
-mod helpers;
-
 use super::breakpoints::{Breakpoint, OtherBreakpoint};
-use super::dwarf::{self, ObjectLocationMap};
+use super::dwarf::{self, ObjectLocationMap, Subprogram, Subroutine};
+use super::klee::get_vcell_ktestobjects;
 use super::AppInfo;
-use crate::utils::core as core_utils;
-use crate::utils::klee::get_vcell_ktestobjects;
+use crate::utils::core;
 use anyhow::{anyhow, Context, Result};
-use helpers::*;
 use ktest_parser::{KTest, KTestObject};
 use probe_rs::{Core, CoreRegisterAddress, MemoryInterface};
 
+pub const BKPT_UNKNOWN_NAME: &str = "<unknown>";
 const DEFAULT_HALT_TIMEOUT_SECONDS: u64 = 10;
 
 type ObjectName = String;
@@ -56,13 +54,13 @@ fn run_to_replay_start(core: &mut Core) -> Result<()> {
     // Wait for core to halt on a breakpoint. If it doesn't something is wrong.
     core.wait_for_core_halted(std::time::Duration::from_secs(DEFAULT_HALT_TIMEOUT_SECONDS))?;
     loop {
-        let imm = core_utils::read_breakpoint_value(core)?;
+        let imm = core::read_breakpoint_value(core)?;
         // Ready to analyze when reaching this breakpoint
         if imm == OtherBreakpoint::ReplayStart as u8 {
             break;
         }
         // Should there be other breakpoints we continue past them
-        core_utils::run(core)?;
+        core::run(core)?;
     }
     Ok(())
 }
@@ -124,13 +122,13 @@ fn read_breakpoints(
 
     // Loop from breakpoints until the next
     loop {
-        core_utils::run(core).context("Could not continue from the ReplayStart breakpoint")?;
+        core::run(core).context("Could not continue from the ReplayStart breakpoint")?;
         core.wait_for_core_halted(std::time::Duration::from_secs(DEFAULT_HALT_TIMEOUT_SECONDS))
             .context(
                 "Core does not halt. Your application might be stuck in a non-terminating loop?",
             )?;
 
-        let current_pc = core_utils::current_pc(core)?;
+        let current_pc = core::current_pc(core)?;
 
         // Catch hardware breakpoints which are only used when writing the test vectors
         // for vcell readings to the load register
@@ -144,13 +142,13 @@ fn read_breakpoints(
                 write_vcell_test_to_register(core, reg, &test)?;
             }
         // Catch halts that are not breakpoints because that should not happen
-        } else if !core_utils::breakpoint_at_pc(core)? {
+        } else if !core::breakpoint_at_pc(core)? {
             return Err(anyhow!(
                 "Core halted, but not due to a breakpoint. Can't continue with analysis. Core status: {:?}", core.status()?
             ));
         // Measure breakpoints and
         } else {
-            let bkpt_val = core_utils::read_breakpoint_value(core)?;
+            let bkpt_val = core::read_breakpoint_value(core)?;
             let bkpt = Breakpoint::from(bkpt_val);
 
             match handle_breakpoint(&bkpt, core, &mut measurements, &mut current_hw_bkpt, app)? {
@@ -160,7 +158,7 @@ fn read_breakpoints(
             }
 
             // Save the result onto the stack
-            let cyccnt = core_utils::read_cycle_counter(core)?;
+            let cyccnt = core::read_cycle_counter(core)?;
             measurements.push((bkpt, name.clone(), cyccnt));
         }
     }
@@ -195,7 +193,6 @@ fn parse_reg_from_load_instruction(instruction: &String) -> Option<u16> {
     let mut split = instruction.split(&[' ', ','][..]);
     let mut reg_no: Option<u16> = None;
     if let Some(asm) = split.next() {
-        println!("{:?}", &asm);
         if asm.contains("ld") {
             let reg = split.next().unwrap();
             reg_no = match reg {
@@ -279,4 +276,94 @@ fn handle_breakpoint(
         _ => LoopAction::Nothing,
     };
     Ok(status)
+}
+
+/// Tries to read the name of the current task from the Subprograms.
+///
+/// * `core` - A connected probe-rs _core_
+/// * `subprograms` - A list of the all the subprograms of the running program
+pub fn read_breakpoint_task_name(core: &mut Core, subprograms: &Vec<Subprogram>) -> Result<String> {
+    let optimal = get_current_task_from_lr(core, subprograms)?;
+
+    let name = match optimal {
+        Some(s) => s.name,
+        None => BKPT_UNKNOWN_NAME.to_string(),
+    };
+    Ok(name)
+}
+
+/// Returns the current vcell (if any) via the link register.
+///
+/// * `core` - A connected probe-rs _core_
+/// * `vcells` - A list of all the vcell readings in the program
+pub fn get_current_vcell_from_lr(
+    core: &mut Core,
+    vcells: &Vec<Subroutine>,
+) -> Result<Option<Subroutine>> {
+    // We read the link register to check where to return after the breakpoint
+    let lr = core.registers().return_address();
+    // Decrement with 1 because otherwise it will point outside the vcell reading
+    let lr_val = core.read_core_reg(lr)? - 1;
+
+    let in_range = dwarf::get_subroutines_address_in_range(&vcells, lr_val as u64)?;
+    let optimal = dwarf::get_shortest_range_subroutine(&in_range)?;
+
+    Ok(optimal)
+}
+
+/// Returns the current task (if any) via the link register. Works only if called
+/// from within a breakpoint.
+///
+/// * `core` - A connected probe-rs _core_
+/// * `subprograms` - A list of the all the subprograms of the running program
+pub fn get_current_task_from_lr(
+    core: &mut Core,
+    subprograms: &Vec<Subprogram>,
+) -> Result<Option<Subprogram>> {
+    // We read the link register to check where to return after the breakpoint
+    let lr = core.registers().return_address();
+    // This returns a PC inside the task we want to find the name for
+    let lr_val = core.read_core_reg(lr)?;
+
+    let in_range = dwarf::get_subprograms_address_in_range(subprograms, lr_val as u64)?;
+    let optimal = dwarf::get_shortest_range_subprogram(&in_range)?;
+
+    Ok(optimal)
+}
+
+/// Tries to read the name of the resources that is currently locked from the Subroutines.
+///
+/// * `core` - A connected probe-rs _core_
+/// * `resource_locks` - A lsit of all resource locks
+pub fn read_breakpoint_lock_name(
+    core: &mut Core,
+    resource_locks: &Vec<Subroutine>,
+) -> Result<String> {
+    let optimal = get_current_resource_lock(core, resource_locks)?;
+
+    let name = match optimal {
+        Some(s) => s.name,
+        None => BKPT_UNKNOWN_NAME.to_string(),
+    };
+    Ok(name)
+}
+
+/// Returns the current resource lock we're inside via the link register. Works only if called
+/// from within a breakpoint.
+///
+/// * `core` - A connected probe-rs _core_
+/// * `resource_locks` - A lsit of all resource locks
+pub fn get_current_resource_lock(
+    core: &mut Core,
+    resource_locks: &Vec<Subroutine>,
+) -> Result<Option<Subroutine>> {
+    // We read the link register to check where to return after the breakpoint
+    let lr = core.registers().return_address();
+    // This returns a PC inside the task we want to find the name for
+    let lr_val = core.read_core_reg(lr)?;
+
+    let in_range = dwarf::get_subroutines_address_in_range(resource_locks, lr_val as u64)?;
+    let optimal = dwarf::get_shortest_range_subroutine(&in_range)?;
+
+    Ok(optimal)
 }

@@ -1,5 +1,5 @@
 use crate::cli::GenerateInput;
-use crate::metadata::RaukInfo;
+use crate::metadata::RaukMetadata;
 use anyhow::{anyhow, Context, Result};
 use glob::glob;
 use std::path::PathBuf;
@@ -9,7 +9,7 @@ const DEFAULT_KLEE_TARGET: &str = "x86_64-unknown-linux-gnu";
 
 /// Builds the test harness, then generates test vectors from it using KLEE.
 /// Returns the path to where KLEE generated its tests.
-pub fn generate_klee_tests(input: &GenerateInput, metadata: &RaukInfo) -> Result<PathBuf> {
+pub fn generate_klee_tests(input: &GenerateInput, metadata: &RaukMetadata) -> Result<PathBuf> {
     let mut target_dir = metadata.project_directory.clone();
     let mut cargo_path = metadata.project_directory.clone();
     let mut project_name: String = String::from("");
@@ -51,19 +51,19 @@ fn build_test_harness(
     cargo.arg("rustc");
     target_dir.push(DEFAULT_KLEE_TARGET);
 
-    if input.release {
+    if input.is_release() {
         cargo.arg("--release");
         target_dir.push("release/");
     } else {
         target_dir.push("debug/");
     }
 
-    if input.example.is_none() {
-        *project_name = input.bin.as_ref().unwrap().to_string();
+    if input.build.example.is_none() {
+        *project_name = input.build.bin.as_ref().unwrap().to_string();
         cargo.args(&["--bin", project_name]);
         target_dir.push("deps/");
     } else {
-        *project_name = input.example.as_ref().unwrap().to_string();
+        *project_name = input.build.example.as_ref().unwrap().to_string();
         cargo.args(&["--example", project_name]);
         target_dir.push("examples/");
     }

@@ -1,14 +1,15 @@
 mod breakpoints;
 mod dwarf;
 mod hardware;
+mod klee;
 mod objdump;
 mod trace;
 
 use self::dwarf::{ObjectLocationMap, Subprogram, Subroutine};
 use self::objdump::Objdump;
 use crate::cli::MeasureInput;
-use crate::metadata::RaukInfo;
-use crate::utils::{core as core_utils, klee};
+use crate::metadata::RaukMetadata;
+use crate::utils::core;
 use crate::RaukSettings;
 use anyhow::{anyhow, Context, Result};
 use hardware::MeasurementResult;
@@ -45,7 +46,7 @@ pub struct AppInfo {
 pub fn wcet_measurement(
     input: &MeasureInput,
     settings: &RaukSettings,
-    metadata: &RaukInfo,
+    metadata: &RaukMetadata,
 ) -> Result<Option<PathBuf>> {
     let (dwarf_path, ktests_path) = get_analysis_paths(&input, &metadata)?;
     let mut updated_input = input.clone();
@@ -89,11 +90,11 @@ pub fn wcet_measurement(
         variables: addr,
         vcells,
         objdump,
-        release: input.release,
+        release: input.is_release(),
     };
 
     let mut session = if let Some(chip) = updated_input.chip {
-        core_utils::open_and_attach_probe(&chip)?
+        core::open_and_attach_probe(&chip)?
     } else {
         return Err(anyhow!(
             "Cannot attach to hardware. No chip type given as input"
@@ -124,22 +125,30 @@ fn post_measurement_analysis(measurements: Vec<Vec<MeasurementResult>>) -> Resul
 }
 
 /// Get the necessary paths for analysis.
-fn get_analysis_paths(input: &MeasureInput, metadata: &RaukInfo) -> Result<(PathBuf, PathBuf)> {
-    let dwarf_path: PathBuf = match &input.dwarf {
-        Some(path) => path.clone(),
-        None => match metadata.get_dwarf_path() {
-            Some(path) => path,
-            None => return Err(anyhow!("No path to DWARF was given/found")),
-        },
-    };
+fn get_analysis_paths(input: &MeasureInput, metadata: &RaukMetadata) -> Result<(PathBuf, PathBuf)> {
+    let (name, example) = (input.get_name(), input.is_example());
+    let artifact = metadata.get_artifact_detail(&name, input.is_release(), example);
 
-    let ktests_path: PathBuf = match &input.ktests {
-        Some(path) => path.clone(),
-        None => match metadata.get_ktest_path() {
-            Some(path) => path,
-            None => return Err(anyhow!("No path to KTESTS found/given")),
-        },
-    };
+    let mut dwarf_path: PathBuf = PathBuf::new();
+    let mut ktests_path: PathBuf = PathBuf::new();
+
+    if let Some(artifact) = artifact {
+        dwarf_path = match &input.dwarf {
+            Some(path) => path.clone(),
+            None => match artifact.get_dwarf_path() {
+                Some(path) => path,
+                None => return Err(anyhow!("No path to DWARF was given/found")),
+            },
+        };
+
+        ktests_path = match &input.ktests {
+            Some(path) => path.clone(),
+            None => match artifact.get_ktest_path() {
+                Some(path) => path,
+                None => return Err(anyhow!("No path to KTESTS found/given")),
+            },
+        };
+    }
 
     Ok((dwarf_path, ktests_path))
 }
