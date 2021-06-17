@@ -1,4 +1,8 @@
 # RTIC Analysis Using KLEE 
+<p align="center">
+ <img src=".github/drawing.png" width="300" height="300">
+</p>
+
 > "A rauk is a column-like landform in Sweden and Norway, often equivalent to a stack."
 
 **Rauk** is a program that automatically generates test vectors for your [RTIC](https://rtic.rs) application and uses them to
