@@ -1,4 +1,4 @@
-# RTIC Analysis Using KLEE 
+# rauk - RTIC Analysis Using KLEE 
 <p align="center">
  <img src=".github/drawing.png" width="300" height="300">
 </p>
