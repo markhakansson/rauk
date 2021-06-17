@@ -23,46 +23,65 @@ run a measurement-based WCET analysis on actual hardware.
 
 ## Requirements
 * [KLEE](https://github.com/klee/klee) v2.2+
-* Linux x86-64 (host)
+* GNU/Linux x86-64 (host)
 
 ### Supported crates
-* cortex-m-rtic v0.6+
-* cortex-m v0.7+
-* cortex-m-rt v0.6+
+
+| Crate         | Version  |
+| :------------ | :------- |
+| cortex-m-rtic | 0.6.*    |
+| cortex-m      | 0.7.*    |
+| cortex-m-rt   | 0.6.*    |
+
 
 ## Getting started
 
 ### Important!
-In order for Rauk to generate the test vectors you need to set a panic handler that aborts! Othewise it will not terminate. You can add the following
+In order for Rauk and KLEE to generate the test vectors you need to set a panic handler that aborts! Othewise it will not terminate. You can add the following
 to your application:
 ```rust
 #[cfg(feature = "klee-analysis")]
-use panic_klee as _;
+use panic_rauk as _;
 ```
-You will also have to enable LTO and debug information in your `Cargo.toml`
+You will have to add that as a dependency and also enable LTO and debug information in your `Cargo.toml`
 ```toml
 # Cargo.toml
+[dependencies.panic-rauk]
+git = "https://github.com/markhakansson/panic-rauk.git"
+optional = true
+
 [profile.dev]
-lto = true
+codegen-units = 1
+lto = "thin"
+debug = true
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
 debug = true
 ```
 ### Quickstart
-
+Running Rauk for a binary target without release optimizations: 
 1. Build test harness and generate test vectors
-    - `rauk generate --bin <NAME>` or `rauk generate --example <NAME>`
+    - `rauk generate --bin <NAME>` or 
 2. Build replay harness and flash it to hardware
-    - `rauk flash --target <TARGET> --chip <CHIP>`
+    - `rauk flash --bin <NAME> --target <TARGET> --chip <CHIP>`
 3. Measure replay harness to get WCET trace
-    - `rauk analyze --chip <CHIP>`
+    - `rauk measure --bin <NAME> --chip <CHIP>`
 
 ## How it works
-The basics of Rauk is actually pretty simple. It first creates a test harness based on the RTIC application to be tested, where it marks task resources and 
-hardware readings for KLEE to work on symbolically. KLEE will generate test vectors for each user task this way. The test vectors created for each task will result in all paths of the task being reached. Using these vectors it is assumed that one of these vectors will result in the longest path of the task being run. 
+The basics of Rauk is actually pretty simple. It first creates a test harness based on the RTIC application to be tested, 
+where it marks task resources and hardware readings for KLEE to work on symbolically. KLEE will generate test vectors for 
+each user task this way. The test vectors created for each task will result in all paths of the task being reached. Using
+these vectors it is assumed that one of these vectors will result in the longest path of the task being run. 
 
-Then Rauk creates a replay harness where all entry and exitpoints of task handlers and resource locks (critical sections) are inserted with a breakpoint. 
-Then it will write the contents of each test vector and at each breakpoint it stops at, measure the cycle count. This will result in a trace for each test vector, which can be used to run a response-time analysis given further information.
+Then Rauk creates a replay harness where all entry and exitpoints of task handlers and resource locks (critical sections)
+are inserted with a breakpoint. Then it will write the contents of each test vector and at each breakpoint it stops at,
+measure the cycle count. This will result in a trace for each test vector, which can be used to run a response-time analysis
+given further information.
 
-See [RAUK: Embedded Schedulability Analysis Using Symbolic Execution](https://github.com/markhakansson/master-thesis) (incomplete) for the thesis that resulted in this application.
+See [RAUK: Embedded Schedulability Analysis Using Symbolic Execution](https://github.com/markhakansson/master-thesis) (incomplete)
+for the thesis that resulted in this application.
 
 ## Limitations
 Rauk does have a few limitations
@@ -79,6 +98,12 @@ Rauk does have a few limitations
         * Signed and unsigned integers
         * `char`
     * Hardware readings via `vcell` from `embedded-hal` reads
+
+## Acknowledgements
+Rauk was heavily inspired by the works of Lindner et al. [1] were they used KLEE to run a hardware-in-the-loop WCET analysis of RTFM (the old name of RTIC). And would not have been possible without their contributions.
+
+## References
+[1] Lindner, M., Aparicio, J., Tjäder, H., Lindgren, P., & Eriksson, J. (2018). Hardware-in-the-loop based WCET analysis with KLEE. 2018 IEEE 23RD INTERNATIONAL CONFERENCE ON EMERGING TECHNOLOGIES AND FACTORY AUTOMATION (ETFA), 345–352.
 
 ## License
 TBA
