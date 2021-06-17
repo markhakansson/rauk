@@ -19,6 +19,7 @@ pub struct General {
     pub target: Option<String>,
 }
 
+/// Rauk settings file that can be used instead of command input
 #[derive(Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct RaukSettings {
