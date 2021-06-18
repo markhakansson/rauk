@@ -15,9 +15,13 @@ __Please note that Rauk is still very early in development and should not be use
 1. [Features](#features)
 2. [Requirements](#requirements)
 3. [Getting started](#getting-started)
-4. [How it works](#how-it-works)
-5. [Limitations](#limitations)
-6. [License](#license)
+4. [Examples](#examples)
+5. [How it works](#how-it-works)
+6. [Limitations](#limitations)
+7. [Acknowledgements](#acknowledgements)
+8. [References](#references)
+9. [FAQ](#faq)
+10. [License](#license)
 
 ## Features
 - Automatic test vector generation of RTIC user tasks using the symbolic execution engine [KLEE](https://github.com/klee/klee)
@@ -74,6 +78,10 @@ Running Rauk for a binary target without release optimizations:
 3. Measure replay harness to get WCET trace
     - `rauk measure --bin <NAME> --chip <CHIP>`
 
+## Examples
+Examples applications are provided in the [rauk-examples](https://github.com/markhakansson/rauk-examples) repository.
+It contains most things that are supported by rauk.
+
 ## How it works
 The basics of Rauk is actually pretty simple. It first creates a test harness based on the RTIC application to be tested, 
 where it marks task resources and hardware readings for KLEE to work on symbolically. KLEE will generate test vectors for 
@@ -102,6 +110,9 @@ Rauk was heavily inspired by the works of Lindner et al. [1] were they used KLEE
 
 ## References
 [1] Lindner, M., Aparicio, J., Tjäder, H., Lindgren, P., & Eriksson, J. (2018). Hardware-in-the-loop based WCET analysis with KLEE. 2018 IEEE 23RD INTERNATIONAL CONFERENCE ON EMERGING TECHNOLOGIES AND FACTORY AUTOMATION (ETFA), 345–352.
+
+## FAQ
+See [FAQ.md](docs/FAQ.md) for troubleshooting.
 
 ## License
 TBA
