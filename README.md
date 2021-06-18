@@ -6,7 +6,9 @@
 > "A rauk is a column-like landform in Sweden and Norway, often equivalent to a stack."
 
 **Rauk** is a program that automatically generates test vectors for your [RTIC](https://rtic.rs) application and uses them to
-run a measurement-based WCET analysis on actual hardware.
+run a measurement-based WCET analysis on actual hardware. 
+
+__Please note that Rauk is still very early in development and should not be used for serious or production-ready applications!__
 
 ## Table of contents
 1. [Features](#features)
@@ -17,15 +19,16 @@ run a measurement-based WCET analysis on actual hardware.
 6. [License](#license)
 
 ## Features
-- Automatic test vector generation of RTIC user tasks using KLEE
-- Measurement-based WCET analysis of user tasks using the test vectors
-- Response-time analysis of system from the WCET results
+- Automatic test vector generation of RTIC user tasks using the symbolic execution engine [KLEE](https://github.com/klee/klee)
+- Measurement-based WCET analysis of user tasks using the test vectors an real hardware
+- The output can be used to calculate the response-time of all tasks
 
 ## Requirements
 * [KLEE](https://github.com/klee/klee) v2.2+
 * GNU/Linux x86-64 (host)
+* An ARM Cortex-M microcontroller 
 
-### Supported crates
+### Supported crates & versions
 
 | Crate         | Version  |
 | :------------ | :------- |
@@ -84,20 +87,12 @@ See [RAUK: Embedded Schedulability Analysis Using Symbolic Execution](https://gi
 for the thesis that resulted in this application.
 
 ## Limitations
-Rauk does have a few limitations
-* The way measuring is done, does add some overhead
-* KLEE generates test vectors on LLVM IR which does not necessarily mean that the test vectors will execute the longest path in ARM instructions
-* No Monotonics support yet
-* The following RTIC features are currently supported:
-    * Hardware and software tasks
-    * Regular spawn()
-* The following are tested for each task
-    * Initial resources
-       * Primitives
-    * Late Resources
-        * Signed and unsigned integers
-        * `char`
-    * Hardware readings via `vcell` from `embedded-hal` reads
+* The way WCET measuring is done, does add some overhead to the results
+* KLEE generates test vectors on LLVM IR which does not necessarily mean that the test vectors will target the longest path in ARM instructions
+* No monotonics support (yet)
+* Only simple resources are supported (such as primitives, peripherals and pins)
+* Works best on applications that have smaller tasks that generally have short a runtime
+* `ìnit()` and `idle()` functions are ignored completely
 
 ## Acknowledgements
 Rauk was heavily inspired by the works of Lindner et al. [1] were they used KLEE to run a hardware-in-the-loop WCET analysis of RTFM (the old name of RTIC). And would not have been possible without their contributions.
