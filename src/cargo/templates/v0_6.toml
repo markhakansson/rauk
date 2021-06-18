@@ -14,11 +14,9 @@ optional = true
 
 [patch.crates-io]
 cortex-m = { git = "https://github.com/markhakansson/cortex-m.git", branch = "rauk-0.6.0-alpha.2" }
-#cortex-m-rtic = { git = "https://github.com/markhakansson/cortex-m-rtic.git", branch = "rauk-0.6.0-alpha.2" }
-cortex-m-rtic = { path = "../cortex-m-rtic" }
+cortex-m-rtic = { git = "https://github.com/markhakansson/cortex-m-rtic.git", branch = "rauk-0.6.0-alpha.4" }
 cortex-m-rt = { git = "https://github.com/markhakansson/cortex-m-rt.git", branch = "klee" }
-#vcell = { git = "https://github.com/markhakansson/vcell.git", branch = "klee" }
-vcell = { path = "../vcell" }
+vcell = { git = "https://github.com/markhakansson/vcell.git", branch = "klee" }
 
 [features]
 klee-analysis = [
