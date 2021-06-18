@@ -28,6 +28,7 @@ __Please note that Rauk is still very early in development and should not be use
 * [KLEE](https://github.com/klee/klee) v2.2+
 * GNU/Linux x86-64 (host)
 * An ARM Cortex-M microcontroller 
+* Rust 1.51.0+
 
 ### Supported crates & versions
 
