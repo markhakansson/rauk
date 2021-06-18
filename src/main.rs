@@ -7,14 +7,32 @@ mod metadata;
 mod settings;
 mod utils;
 
+#[macro_use]
+extern crate log;
+use simplelog::*;
+
 use anyhow::{anyhow, Context, Result};
 use cli::{BuildDetails, CliOptions, Command};
 use metadata::{ArtifactDetail, OutputInfo, RaukMetadata};
 use settings::RaukSettings;
-use std::fs::{canonicalize, remove_file};
+use std::fs::{canonicalize, remove_file, File};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
+    CombinedLogger::init(vec![
+        TermLogger::new(
+            LevelFilter::Warn,
+            Config::default(),
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        ),
+        WriteLogger::new(
+            LevelFilter::Info,
+            Config::default(),
+            File::create("rauk.log").unwrap(),
+        ),
+    ])?;
+
     let opts = cli::get_cli_opts();
     let project_dir = match opts.path.clone() {
         Some(path) => canonicalize(path)?,
@@ -124,6 +142,7 @@ fn post_execution_cleanup(project_dir: &PathBuf, no_patch: bool) -> Result<()> {
     if no_patch {
         Ok(())
     } else {
+        info!("Restoring user Cargo.toml");
         cargo::restore_orignal_cargo_toml(&project_dir)
     }
 }
