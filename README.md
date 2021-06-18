@@ -95,6 +95,7 @@ for the thesis that resulted in this application.
 * Only simple resources are supported (such as primitives, peripherals and pins)
 * Works best on applications that have smaller tasks that generally have short a runtime
 * `ìnit()` and `idle()` functions are ignored completely
+* Measuring release builds are not always 100% correct
 
 ## Acknowledgements
 Rauk was heavily inspired by the works of Lindner et al. [1] were they used KLEE to run a hardware-in-the-loop WCET analysis of RTFM (the old name of RTIC). And would not have been possible without their contributions.
