@@ -5,9 +5,11 @@ use gimli::{
         AttributeValue, DebuggingInformationEntry, Dwarf, EndianSlice, EvaluationResult, Location,
         Unit,
     },
-    RunTimeEndian, UnitHeader,
+    Expression, RunTimeEndian, UnitHeader,
 };
 use rustc_demangle::demangle;
+
+const FLASH_ADDRESS_START: u64 = 0x2000_0000;
 
 /// Parses all `DW_AT_variable`s in the current DWARF unit if there are any.
 ///
@@ -25,7 +27,7 @@ pub fn parse_variable_entries(
     while let Some((_, entry)) = entries.next_dfs()? {
         // Iterate over the variables in the DIE.
         if entry.tag() == gimli::DW_TAG_variable {
-            match parse_object_location(&entry, &dwarf, &header)? {
+            match parse_object_location(&unit, &entry, &dwarf, &header)? {
                 Some(variable) => objects.push(variable),
                 None => (),
             }
@@ -37,6 +39,7 @@ pub fn parse_variable_entries(
 /// Tries to find the variable information (location and name) for the
 /// current entry if it is a variable.
 fn parse_object_location(
+    unit: &Unit<EndianSlice<RunTimeEndian>>,
     entry: &DebuggingInformationEntry<EndianSlice<RunTimeEndian>>,
     dwarf: &Dwarf<EndianSlice<RunTimeEndian>>,
     header: &UnitHeader<EndianSlice<RunTimeEndian>>,
@@ -44,7 +47,7 @@ fn parse_object_location(
     let mut attrs = entry.attrs();
     let mut name: String = String::new();
     let mut location: Option<u64> = None;
-    while let Some(attr) = attrs.next()? {
+    'outer: while let Some(attr) = attrs.next()? {
         if attr.name() == gimli::constants::DW_AT_name {
             match attr.value() {
                 AttributeValue::DebugStrRef(offset) => {
@@ -60,21 +63,16 @@ fn parse_object_location(
         } else if attr.name() == gimli::constants::DW_AT_location {
             match attr.value() {
                 AttributeValue::Exprloc(e) => {
-                    let mut eval = e.evaluation(header.encoding());
-                    let mut result = eval.evaluate()?;
-                    match result {
-                        EvaluationResult::RequiresRelocatedAddress(u) => {
-                            result = eval.resume_with_relocated_address(u)?;
-                        }
-                        _ => (),
+                    if let Some(loc) = location_from_expr(header, e)? {
+                        location = Some(loc);
                     }
-
-                    if result == EvaluationResult::Complete {
-                        let eval = eval.result();
-                        let loc = eval.first().unwrap().location;
-                        match loc {
-                            Location::Address { address: a } => location = Some(a),
-                            _ => (),
+                }
+                AttributeValue::LocationListsRef(offset) => {
+                    let mut locations = dwarf.locations(unit, offset)?;
+                    while let Some(loc) = locations.next()? {
+                        if let Some(loc) = location_from_expr(header, loc.data)? {
+                            location = Some(loc);
+                            break 'outer;
                         }
                     }
                 }
@@ -94,6 +92,54 @@ fn parse_object_location(
         return Ok(Some(replay));
     }
     Ok(None)
+}
+
+fn location_from_expr(
+    header: &UnitHeader<EndianSlice<RunTimeEndian>>,
+    expr: Expression<EndianSlice<RunTimeEndian>>,
+) -> Result<Option<u64>> {
+    let mut location: Option<u64> = None;
+    let mut eval = expr.evaluation(header.encoding());
+    let mut result = eval.evaluate()?;
+    loop {
+        match result {
+            EvaluationResult::RequiresRelocatedAddress(u) => {
+                result = eval.resume_with_relocated_address(u)?;
+            }
+            EvaluationResult::RequiresRegister {
+                register,
+                base_type: _,
+            } => {
+                result = eval.resume_with_register(gimli::Value::Generic(register.0.into()))?;
+            }
+            EvaluationResult::RequiresMemory {
+                address,
+                size: _,
+                space: _,
+                base_type: _,
+            } => {
+                result = eval.resume_with_memory(gimli::Value::Generic(address))?;
+            }
+            _ => break,
+        }
+    }
+
+    if result == EvaluationResult::Complete {
+        let eval = eval.result();
+        let loc = eval.first().unwrap().location;
+        match loc {
+            Location::Address { address: a } => location = Some(a),
+            Location::Value { value } => {
+                let v = value.to_u64(u64::MAX)?;
+                if v >= FLASH_ADDRESS_START {
+                    location = Some(v);
+                }
+            }
+            _ => (),
+        }
+    }
+
+    Ok(location)
 }
 
 /// Parses the `DW_AT_subprogram`s in the current DWARF unit if there are any.
