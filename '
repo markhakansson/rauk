@@ -102,28 +102,23 @@ fn match_cli_opts(
     settings: &RaukSettings,
     metadata: &mut RaukMetadata,
 ) -> Result<()> {
-    // Inherit verbose flag from main cli opts
     match &mut opts.cmd {
-        Command::Generate(g) => g.verbose = opts.verbose,
-        Command::Flash(f) => f.verbose = opts.verbose,
-        _ => (),
-    }
-
-    match &opts.cmd {
         Command::Generate(g) => {
+            g.verbose = opts.verbose;
             let path = generate::generate_klee_tests(g, &metadata)
                 .context("Failed to execute generate command")?;
-            update_metadata_output(&g.build, metadata, Some(path), &opts.cmd)?;
+            update_metadata_output(&g.build, metadata, Some(path), &mut opts.cmd)?;
         }
         Command::Flash(f) => {
+            f.verbose = opts.verbose;
             let path = flash::flash_to_target(f, &settings, &metadata)
                 .context("Failed to execute flash command")?;
-            update_metadata_output(&f.build, metadata, Some(path), &opts.cmd)?;
+            update_metadata_output(&f.build, metadata, Some(path), &mut opts.cmd)?;
         }
         Command::Measure(a) => {
             let path = measure::wcet_measurement(a, &settings, &metadata)
                 .context("Failed to execute analyze command")?;
-            update_metadata_output(&a.build, metadata, path, &opts.cmd)?;
+            update_metadata_output(&a.build, metadata, path, &mut opts.cmd)?;
         }
         _ => (),
     }
