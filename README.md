@@ -124,4 +124,6 @@ Rauk was heavily inspired by the works of Lindner et al. [1] were they used KLEE
 See [FAQ.md](docs/FAQ.md) for troubleshooting.
 
 ## License
-TBA
+A definitive license to be announced.
+
+Copyright 2021 Mark Hakansson
