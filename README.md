@@ -70,6 +70,15 @@ lto = "thin"
 debug = true
 ```
 ### Quickstart
+Mark the tasks you want to be analyzed by Rauk with the following attribute:
+```rust
+#[rauk] // <-- mark task for analysis
+#[task(...)]
+fn task(_: task::Context) {
+    // code
+}
+```
+
 Running Rauk for a binary target without release optimizations: 
 1. Build test harness and generate test vectors
     - `rauk generate --bin <NAME>` or 
