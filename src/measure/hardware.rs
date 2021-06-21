@@ -89,12 +89,10 @@ fn write_replay_objects(
                 core.flush()?;
             }
             None => {
-                // Should log a warning here instead
-                // return Err(anyhow!(
-                //     "Address was not found for KTestObject: {:?}",
-                //     &test
-                // ));
-                ()
+                warn!(
+                    "Could not find an address in flash for KTestObject \'{:}\' with the data: {:?}",
+                    test.name, test.bytes
+                );
             }
         }
     }
@@ -224,7 +222,10 @@ fn write_vcell_test_to_register(core: &mut Core, register: u16, test: &KTestObje
                 )
             })?;
     } else {
-        // Log a warning here
+        warn!(
+            "Failed to overwrite register. Invalid test vector length! Expected 4 bytes, found {:}.",
+            test.num_bytes
+        );
     }
     Ok(())
 }

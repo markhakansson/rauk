@@ -51,6 +51,9 @@ pub struct CliOptions {
     /// you don't have the correct dependencies/features set!
     #[structopt(long)]
     pub no_patch: bool,
+    /// Verbose output
+    #[structopt(short, long)]
+    pub verbose: bool,
     #[structopt(subcommand)]
     pub cmd: Command,
 }
@@ -72,8 +75,7 @@ pub enum Command {
 pub struct GenerateInput {
     #[structopt(flatten)]
     pub build: BuildDetails,
-    /// Enable verbose output
-    #[structopt(short, long)]
+    #[structopt(skip = false)]
     pub verbose: bool,
     /// Emit all KLEE errors.
     #[structopt(long)]
@@ -91,8 +93,7 @@ impl GenerateInput {
 pub struct FlashInput {
     #[structopt(flatten)]
     pub build: BuildDetails,
-    /// Enable verbose output
-    #[structopt(short, long)]
+    #[structopt(skip = false)]
     pub verbose: bool,
     /// The target architecture to build the executable for.
     #[structopt(short, long)]
