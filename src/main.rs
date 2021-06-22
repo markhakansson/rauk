@@ -18,6 +18,8 @@ use settings::RaukSettings;
 use std::fs::{canonicalize, remove_file, File};
 use std::path::PathBuf;
 
+const RAUK_LOG_FILE: &str = "rauk.log";
+
 fn main() -> Result<()> {
     let mut opts = cli::get_cli_opts();
     let project_dir = match opts.path.clone() {
@@ -65,8 +67,9 @@ fn main() -> Result<()> {
 fn init_logger(project_dir: &PathBuf, verbose: bool) -> Result<()> {
     let mut log_output = project_dir.clone();
     log_output.push("target/");
-    std::fs::create_dir(&log_output)?;
-    log_output.push("rauk.log");
+    let _ = std::fs::create_dir(&log_output);
+    log_output.push(RAUK_LOG_FILE);
+
     let log_level = match verbose {
         true => LevelFilter::Info,
         false => LevelFilter::Warn,
