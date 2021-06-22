@@ -6,7 +6,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub const RAUK_METADATA_OUTPUT: &str = ".rauk_meta.json";
+pub const RAUK_OUTPUT_DIR: &str = "target/rauk";
+pub const RAUK_METADATA_FILE: &str = "rauk_metadata.json";
 
 /// Information about the output from all rauk commands.
 /// Used to store intermediary information between commands.
@@ -14,6 +15,7 @@ pub const RAUK_METADATA_OUTPUT: &str = ".rauk_meta.json";
 #[serde(rename_all = "camelCase")]
 pub struct RaukMetadata {
     pub project_directory: PathBuf,
+    pub rauk_output_directory: PathBuf,
     pub previous_execution: PreviousExecution,
     pub artifacts: Artifacts,
 }
@@ -71,6 +73,7 @@ impl RaukMetadata {
     pub fn new(project_dir: &PathBuf) -> RaukMetadata {
         RaukMetadata {
             project_directory: project_dir.clone(),
+            rauk_output_directory: project_dir.join(RAUK_OUTPUT_DIR),
             previous_execution: PreviousExecution::default(),
             artifacts: Artifacts {
                 release: {
@@ -92,7 +95,7 @@ impl RaukMetadata {
     /// Loads the output info file **if it exists** in the project path.
     /// Will overwrite all values in the current struct!
     pub fn load(&mut self) -> Result<()> {
-        let info_path = get_output_path(&self.project_directory);
+        let info_path = get_metadata_path(&self.project_directory);
 
         if info_path.exists() {
             let data =
@@ -105,6 +108,7 @@ impl RaukMetadata {
             };
 
             self.project_directory = output_info.project_directory;
+            self.rauk_output_directory = output_info.rauk_output_directory;
             self.previous_execution = output_info.previous_execution;
             self.artifacts = output_info.artifacts;
         }
@@ -114,7 +118,10 @@ impl RaukMetadata {
 
     /// Writes the contents of RaukMetadata to file.
     pub fn save(&self) -> Result<()> {
-        let info_path = get_output_path(&self.project_directory);
+        let rauk_path = get_rauk_output_path(&self.project_directory);
+        let _ = std::fs::create_dir_all(rauk_path);
+
+        let info_path = get_metadata_path(&self.project_directory);
         let data = serde_json::to_string(&self)?;
         std::fs::write(info_path, data)?;
 
@@ -196,8 +203,16 @@ impl OutputInfo {
     }
 }
 
-fn get_output_path(path: &Path) -> PathBuf {
-    let mut out_path = PathBuf::from(&path);
-    out_path.push(RAUK_METADATA_OUTPUT);
+/// Returns the path to rauk artifacts and outputs
+pub fn get_rauk_output_path(project_dir: &Path) -> PathBuf {
+    let mut out_path = PathBuf::from(&project_dir);
+    out_path.push(RAUK_OUTPUT_DIR);
+    out_path
+}
+
+/// Returns the path to the metadata file
+pub fn get_metadata_path(project_dir: &Path) -> PathBuf {
+    let mut out_path = get_rauk_output_path(&project_dir);
+    out_path.push(RAUK_METADATA_FILE);
     out_path
 }

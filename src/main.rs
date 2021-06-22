@@ -9,13 +9,13 @@ mod utils;
 
 #[macro_use]
 extern crate log;
-use simplelog::*;
-
 use anyhow::{anyhow, Context, Result};
 use cli::{BuildDetails, CliOptions, Command};
 use metadata::{ArtifactDetail, OutputInfo, RaukMetadata};
 use settings::RaukSettings;
-use std::fs::{canonicalize, remove_file, File};
+use simplelog::*;
+use std::fs::{canonicalize, remove_dir_all, remove_file, File};
+use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 
 const RAUK_LOG_FILE: &str = "rauk.log";
@@ -118,6 +118,7 @@ fn match_cli_opts(
         Command::Generate(g) => {
             let path = generate::generate_klee_tests(g, &metadata)
                 .context("Failed to execute generate command")?;
+            let _ = symlink(&path, &metadata.rauk_output_directory.join("klee-last"));
             update_metadata_output(&g.build, metadata, Some(path), &opts.cmd)?;
         }
         Command::Flash(f) => {
@@ -180,11 +181,9 @@ fn post_execution_cleanup(project_dir: &PathBuf, no_patch: bool) -> Result<()> {
 
 /// Manual cleanup procedure. Removes metadata only.
 fn complete_rauk_cleanup(project_dir: &PathBuf) -> Result<()> {
-    let mut metadata_path = project_dir.clone();
-    let mut rauk_cargo_toml = project_dir.clone();
-    metadata_path.push(metadata::RAUK_METADATA_OUTPUT);
-    rauk_cargo_toml.push(cargo::RAUK_CARGO_TOML);
-    remove_file(&metadata_path)?;
+    let rauk_cargo_toml = project_dir.join(cargo::RAUK_CARGO_TOML);
+    let rauk_output_path = metadata::get_rauk_output_path(&project_dir);
+    remove_dir_all(&rauk_output_path)?;
     remove_file(&rauk_cargo_toml)?;
     Ok(())
 }

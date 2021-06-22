@@ -4,6 +4,7 @@ use std::fs::{copy, write};
 use std::path::PathBuf;
 use toml;
 
+const CARGO_TOML: &str = "Cargo.toml";
 /// Name of the Rauk Cargo.toml
 pub const RAUK_CARGO_TOML: &str = ".rauk_cargo.toml";
 /// Name of the backup of the original Cargo.toml
@@ -21,7 +22,7 @@ pub fn backup_original_cargo_toml(project_dir: &PathBuf) -> Result<()> {
 
 fn get_cargo_and_backup_path(project_dir: &PathBuf) -> (PathBuf, PathBuf) {
     let mut cargo_path = project_dir.clone();
-    cargo_path.push("Cargo.toml");
+    cargo_path.push(CARGO_TOML);
     let mut backup_path = project_dir.clone();
     backup_path.push(ORIGINAL_CARGO_COPY);
     (cargo_path, backup_path)
@@ -29,7 +30,7 @@ fn get_cargo_and_backup_path(project_dir: &PathBuf) -> (PathBuf, PathBuf) {
 
 fn get_cargo_and_rauk_path(project_dir: &PathBuf) -> (PathBuf, PathBuf) {
     let mut cargo_path = project_dir.clone();
-    cargo_path.push("Cargo.toml");
+    cargo_path.push(CARGO_TOML);
     let mut rauk_path = project_dir.clone();
     rauk_path.push(RAUK_CARGO_TOML);
     (cargo_path, rauk_path)
@@ -58,7 +59,7 @@ pub fn update_custom_cargo_toml(project_dir: &PathBuf) -> Result<()> {
     rauk_path.push(RAUK_CARGO_TOML);
 
     let mut cargo_path = project_dir.clone();
-    cargo_path.push("Cargo.toml");
+    cargo_path.push(CARGO_TOML);
 
     let mut user_manifest_copy = Manifest::from_path(&cargo_path)?;
     let template = read_rauk_patch_template()?;
