@@ -160,10 +160,10 @@ For example, to generate test vectors for a binary target with the name `hello` 
 ```rust
 rauk generate --bin hello --release
 ```
-The output can be easily accessed via a symlink in `target/rauk/klee-last`. You can display the contents of each test
+The output can be easily accessed via a symlink in `target/rauk/klee-last/`. You can display the contents of each test
 vector using `ktest-tool`.
 
-_NOTE_: If building tests in release mode, make sure to set the flag for `flahs` and `measure` commands. Otherwise you might have problems!
+_NOTE_: If building tests in release mode, make sure to set the flag for `flash` and `measure` commands. Otherwise you might have problems!
 
 ### 4.3 Flashing to hardware
 The binary used for WCET measurement can be built and flashed to hardware using the `flash` command.
