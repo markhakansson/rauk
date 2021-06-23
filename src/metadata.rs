@@ -1,3 +1,4 @@
+use crate::cli::{BuildDetails, Command};
 use anyhow::{anyhow, Context, Result};
 use chrono::prelude::Utc;
 use serde::{Deserialize, Serialize};
@@ -6,7 +7,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub const RAUK_METADATA_OUTPUT: &str = ".rauk_meta.json";
+pub const RAUK_OUTPUT_DIR: &str = "target/rauk";
+pub const RAUK_METADATA_FILE: &str = "rauk_metadata.json";
 
 /// Information about the output from all rauk commands.
 /// Used to store intermediary information between commands.
@@ -14,6 +16,7 @@ pub const RAUK_METADATA_OUTPUT: &str = ".rauk_meta.json";
 #[serde(rename_all = "camelCase")]
 pub struct RaukMetadata {
     pub project_directory: PathBuf,
+    pub rauk_output_directory: PathBuf,
     pub previous_execution: PreviousExecution,
     pub artifacts: Artifacts,
 }
@@ -71,6 +74,7 @@ impl RaukMetadata {
     pub fn new(project_dir: &PathBuf) -> RaukMetadata {
         RaukMetadata {
             project_directory: project_dir.clone(),
+            rauk_output_directory: project_dir.join(RAUK_OUTPUT_DIR),
             previous_execution: PreviousExecution::default(),
             artifacts: Artifacts {
                 release: {
@@ -92,7 +96,7 @@ impl RaukMetadata {
     /// Loads the output info file **if it exists** in the project path.
     /// Will overwrite all values in the current struct!
     pub fn load(&mut self) -> Result<()> {
-        let info_path = get_output_path(&self.project_directory);
+        let info_path = get_metadata_path(&self.project_directory);
 
         if info_path.exists() {
             let data =
@@ -105,6 +109,7 @@ impl RaukMetadata {
             };
 
             self.project_directory = output_info.project_directory;
+            self.rauk_output_directory = output_info.rauk_output_directory;
             self.previous_execution = output_info.previous_execution;
             self.artifacts = output_info.artifacts;
         }
@@ -114,8 +119,11 @@ impl RaukMetadata {
 
     /// Writes the contents of RaukMetadata to file.
     pub fn save(&self) -> Result<()> {
-        let info_path = get_output_path(&self.project_directory);
-        let data = serde_json::to_string(&self)?;
+        let rauk_path = get_rauk_output_path(&self.project_directory);
+        let _ = std::fs::create_dir_all(rauk_path);
+
+        let info_path = get_metadata_path(&self.project_directory);
+        let data = serde_json::to_string(&self).context("Failed to serialize metadata to json")?;
         std::fs::write(info_path, data)?;
 
         Ok(())
@@ -161,6 +169,49 @@ impl RaukMetadata {
             (false, false) => self.artifacts.debug.bin.insert(name, detail),
         };
     }
+
+    /// Updates build output details of a command in the metadata.
+    ///
+    /// * `build` - The build details
+    /// * `path` - The output path
+    /// * `command` - The command that was ran
+    pub fn update_output(
+        &mut self,
+        build: &BuildDetails,
+        path: Option<PathBuf>,
+        command: &Command,
+    ) -> Result<()> {
+        let name = build.get_name();
+        let example = build.is_example();
+        let release = build.is_release();
+
+        let output = OutputInfo::new(path.clone());
+
+        let opt = self.get_mut_artifact_detail(&name, release, example);
+        let mut artifact = if let Some(artifact) = opt {
+            artifact.clone()
+        } else {
+            ArtifactDetail::new()
+        };
+
+        match command {
+            Command::Generate(_) => artifact.generate_output = Some(output),
+            Command::Flash(_) => artifact.flash_output = Some(output),
+            Command::Measure(_) => artifact.measure_output = Some(output),
+            _ => return Err(anyhow!("Cannot store metadata for command: {:?}", &command)),
+        }
+
+        self.insert(&name, artifact, release, example);
+
+        Ok(())
+    }
+
+    /// Mark the program execution as successful. I.e. no breaking errors
+    /// internally in rauk itself (not the RTIC application). If not called
+    /// the next execution of rauk will refuse to continue.
+    pub fn program_execution_successful(&mut self) {
+        self.previous_execution.gracefully_terminated = true;
+    }
 }
 
 /// Information about the previously executed command.
@@ -196,8 +247,24 @@ impl OutputInfo {
     }
 }
 
-fn get_output_path(path: &Path) -> PathBuf {
-    let mut out_path = PathBuf::from(&path);
-    out_path.push(RAUK_METADATA_OUTPUT);
+/// Returns the path to rauk artifacts and outputs
+pub fn get_rauk_output_path(project_dir: &Path) -> PathBuf {
+    let mut out_path = PathBuf::from(&project_dir);
+    out_path.push(RAUK_OUTPUT_DIR);
     out_path
+}
+
+/// Returns the path to the metadata file
+pub fn get_metadata_path(project_dir: &Path) -> PathBuf {
+    let mut out_path = get_rauk_output_path(&project_dir);
+    out_path.push(RAUK_METADATA_FILE);
+    out_path
+}
+
+/// Creates a new metadata structs and tries to load an existing one if it
+/// exists.
+pub fn load_metadata(project_dir: &PathBuf) -> Result<RaukMetadata> {
+    let mut meta = RaukMetadata::new(project_dir);
+    meta.load()?;
+    Ok(meta)
 }

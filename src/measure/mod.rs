@@ -109,7 +109,7 @@ pub fn wcet_measurement(
         .context("Could not complete the analysis of measurement data")?;
     println!("{:#?}", traces);
 
-    let output_path = save_traces_to_directory(&traces, &metadata.project_directory)?;
+    let output_path = save_traces_to_directory(&traces, &metadata.rauk_output_directory)?;
 
     Ok(Some(output_path))
 }

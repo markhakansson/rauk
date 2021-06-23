@@ -68,12 +68,24 @@ pub fn settings_file_exists(project_dir: &PathBuf) -> bool {
 }
 
 /// Load settings from project directory if it exists.
-pub fn load_settings_from_dir(project_dir: &PathBuf) -> Result<RaukSettings> {
+fn load_settings_from_dir(project_dir: &PathBuf) -> Result<RaukSettings> {
     let mut rauk_config_path = project_dir.clone();
     rauk_config_path.push(RAUK_CONFIG_TOML);
     let mut file = File::open(rauk_config_path)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
     let settings: RaukSettings = toml::from_str(&contents)?;
+    Ok(settings)
+}
+
+/// Loads settings from file if it exists, otherwise creates an empty
+/// settings struct.
+pub fn load_settings(project_dir: &PathBuf) -> Result<RaukSettings> {
+    let settings = if settings_file_exists(&project_dir) {
+        load_settings_from_dir(&project_dir)?
+    } else {
+        RaukSettings::new()
+    };
+
     Ok(settings)
 }
