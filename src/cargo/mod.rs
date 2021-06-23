@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use cargo_toml::Manifest;
-use std::fs::{copy, write};
+use std::fs::{copy, rename, write};
 use std::path::PathBuf;
 use toml;
 
@@ -47,7 +47,7 @@ pub fn backup_original_cargo_files(project_dir: &PathBuf) -> Result<()> {
     })?;
 
     if paths.cargo_lock.exists() {
-        copy(&paths.cargo_lock, &paths.lock_backup).with_context(|| {
+        rename(&paths.cargo_lock, &paths.lock_backup).with_context(|| {
             format!(
                 "Could not backup {:?} to {:?}",
                 &paths.cargo_lock, &paths.lock_backup
