@@ -2,6 +2,7 @@ mod cargo;
 mod cli;
 mod flash;
 mod generate;
+mod logger;
 mod measure;
 mod metadata;
 mod settings;
@@ -9,16 +10,13 @@ mod utils;
 
 #[macro_use]
 extern crate log;
-use anyhow::{anyhow, Context, Result};
-use cli::{BuildDetails, CliOptions, Command};
-use metadata::{ArtifactDetail, OutputInfo, RaukMetadata};
+use anyhow::{Context, Result};
+use cli::{CliOptions, Command};
+use metadata::RaukMetadata;
 use settings::RaukSettings;
-use simplelog::*;
-use std::fs::{canonicalize, remove_dir_all, remove_file, File};
+use std::fs::{canonicalize, create_dir_all, remove_dir_all, remove_file};
 use std::os::unix::fs::symlink;
 use std::path::PathBuf;
-
-const RAUK_LOG_FILE: &str = "rauk.log";
 
 fn main() -> Result<()> {
     let mut opts = cli::get_cli_opts();
@@ -26,7 +24,8 @@ fn main() -> Result<()> {
         Some(path) => canonicalize(path)?,
         None => canonicalize(PathBuf::from("./"))?,
     };
-    init_logger(&project_dir, opts.verbose)?;
+
+    logger::init_logger(&project_dir, opts.verbose)?;
 
     if opts.cmd == Command::Cleanup {
         complete_rauk_cleanup(&project_dir)
@@ -38,14 +37,14 @@ fn main() -> Result<()> {
             post_execution_cleanup(&project_dir_copy, no_patch).unwrap();
         })?;
 
-        let settings: RaukSettings = load_settings(&project_dir)?;
-        // Load metadata and check if previous execution was ok
-        let mut metadata = RaukMetadata::new(&project_dir);
-        metadata.load()?;
+        let _ = create_dir_all(&project_dir.join(metadata::RAUK_OUTPUT_DIR));
+
+        let settings = settings::load_settings(&project_dir)?;
+        let mut metadata = metadata::load_metadata(&project_dir)?;
 
         // Patch the project's Cargo.toml
         if !opts.no_patch {
-            cargo::backup_original_cargo_toml(&project_dir)?;
+            cargo::backup_original_cargo_files(&project_dir)?;
             info!("User Cargo.toml backed up");
             cargo::update_custom_cargo_toml(&project_dir)?;
             cargo::change_cargo_toml_to_custom(&project_dir)?;
@@ -57,49 +56,11 @@ fn main() -> Result<()> {
 
         // Cleanup and save metadata
         post_execution_cleanup(&project_dir, opts.no_patch)?;
-        metadata.previous_execution.gracefully_terminated = true;
+        metadata.program_execution_successful();
         metadata.save()?;
 
         res
     }
-}
-
-fn init_logger(project_dir: &PathBuf, verbose: bool) -> Result<()> {
-    let mut log_output = project_dir.clone();
-    log_output.push("target/");
-    let _ = std::fs::create_dir(&log_output);
-    log_output.push(RAUK_LOG_FILE);
-
-    let log_level = match verbose {
-        true => LevelFilter::Info,
-        false => LevelFilter::Warn,
-    };
-
-    CombinedLogger::init(vec![
-        TermLogger::new(
-            log_level,
-            Config::default(),
-            TerminalMode::Mixed,
-            ColorChoice::Auto,
-        ),
-        WriteLogger::new(
-            LevelFilter::Warn,
-            Config::default(),
-            File::create(log_output).unwrap(),
-        ),
-    ])?;
-
-    Ok(())
-}
-
-fn load_settings(project_dir: &PathBuf) -> Result<RaukSettings> {
-    let settings = if settings::settings_file_exists(&project_dir) {
-        settings::load_settings_from_dir(&project_dir)?
-    } else {
-        RaukSettings::new()
-    };
-
-    Ok(settings)
 }
 
 fn match_cli_opts(
@@ -119,51 +80,20 @@ fn match_cli_opts(
             let path = generate::generate_klee_tests(g, &metadata)
                 .context("Failed to execute generate command")?;
             let _ = symlink(&path, &metadata.rauk_output_directory.join("klee-last"));
-            update_metadata_output(&g.build, metadata, Some(path), &opts.cmd)?;
+            metadata.update_output(&g.build, Some(path), &opts.cmd)?;
         }
         Command::Flash(f) => {
             let path = flash::flash_to_target(f, &settings, &metadata)
                 .context("Failed to execute flash command")?;
-            update_metadata_output(&f.build, metadata, Some(path), &opts.cmd)?;
+            metadata.update_output(&f.build, Some(path), &opts.cmd)?;
         }
         Command::Measure(a) => {
             let path = measure::wcet_measurement(a, &settings, &metadata)
                 .context("Failed to execute analyze command")?;
-            update_metadata_output(&a.build, metadata, path, &opts.cmd)?;
+            metadata.update_output(&a.build, path, &opts.cmd)?;
         }
         _ => (),
     }
-
-    Ok(())
-}
-
-fn update_metadata_output(
-    build: &BuildDetails,
-    metadata: &mut RaukMetadata,
-    path: Option<PathBuf>,
-    command: &Command,
-) -> Result<()> {
-    let name = build.get_name();
-    let example = build.is_example();
-    let release = build.is_release();
-
-    let output = OutputInfo::new(path.clone());
-
-    let opt = metadata.get_mut_artifact_detail(&name, release, example);
-    let mut artifact = if let Some(artifact) = opt {
-        artifact.clone()
-    } else {
-        ArtifactDetail::new()
-    };
-
-    match command {
-        Command::Generate(_) => artifact.generate_output = Some(output),
-        Command::Flash(_) => artifact.flash_output = Some(output),
-        Command::Measure(_) => artifact.measure_output = Some(output),
-        _ => return Err(anyhow!("Cannot store metadata for command: {:?}", &command)),
-    }
-
-    metadata.insert(&name, artifact, release, example);
 
     Ok(())
 }
@@ -172,7 +102,7 @@ fn update_metadata_output(
 fn post_execution_cleanup(project_dir: &PathBuf, no_patch: bool) -> Result<()> {
     // Restore original Cargo.toml
     if !no_patch {
-        cargo::restore_orignal_cargo_toml(&project_dir)?;
+        cargo::restore_orignal_cargo_files(&project_dir)?;
         info!("User Cargo.toml restored");
     }
 
@@ -183,7 +113,8 @@ fn post_execution_cleanup(project_dir: &PathBuf, no_patch: bool) -> Result<()> {
 fn complete_rauk_cleanup(project_dir: &PathBuf) -> Result<()> {
     let rauk_cargo_toml = project_dir.join(cargo::RAUK_CARGO_TOML);
     let rauk_output_path = metadata::get_rauk_output_path(&project_dir);
-    remove_dir_all(&rauk_output_path)?;
-    remove_file(&rauk_cargo_toml)?;
+    let _ = remove_dir_all(&rauk_output_path);
+    let _ = remove_file(&rauk_cargo_toml);
+    info!("Completed cleanup procedure of rauk data");
     Ok(())
 }

@@ -4,49 +4,82 @@ use std::fs::{copy, write};
 use std::path::PathBuf;
 use toml;
 
-const CARGO_TOML: &str = "Cargo.toml";
 /// Name of the Rauk Cargo.toml
 pub const RAUK_CARGO_TOML: &str = ".rauk_cargo.toml";
 /// Name of the backup of the original Cargo.toml
-pub const ORIGINAL_CARGO_COPY: &str = ".Cargo.toml.copy";
+pub const CARGO_TOML_BACKUP: &str = ".Cargo.toml.backup";
 
-/// Saves a copy of the orignal Cargo.toml in the project directory.
+const CARGO_TOML: &str = "Cargo.toml";
+const CARGO_LOCK: &str = "Cargo.lock";
+const CARGO_LOCK_BACKUP: &str = ".Cargo.lock.backup";
+
+struct CargoPaths {
+    cargo_toml: PathBuf,
+    cargo_lock: PathBuf,
+    toml_backup: PathBuf,
+    lock_backup: PathBuf,
+    rauk_cargo_toml: PathBuf,
+}
+
+impl CargoPaths {
+    fn new(project_dir: &PathBuf) -> CargoPaths {
+        CargoPaths {
+            cargo_toml: project_dir.join(CARGO_TOML),
+            cargo_lock: project_dir.join(CARGO_LOCK),
+            toml_backup: project_dir.join(CARGO_TOML_BACKUP),
+            lock_backup: project_dir.join(CARGO_LOCK_BACKUP),
+            rauk_cargo_toml: project_dir.join(RAUK_CARGO_TOML),
+        }
+    }
+}
+
+/// Saves copies of the orignal Cargo.toml and Cargo.lock files in the project directory.
 ///
 /// * `project_dir` - The path to the RTIC project
-pub fn backup_original_cargo_toml(project_dir: &PathBuf) -> Result<()> {
-    let (cargo_path, backup_path) = get_cargo_and_backup_path(project_dir);
-    copy(&cargo_path, &backup_path)
-        .with_context(|| format!("Could not backup {:?} to {:?}", cargo_path, backup_path))?;
+pub fn backup_original_cargo_files(project_dir: &PathBuf) -> Result<()> {
+    let paths = CargoPaths::new(project_dir);
+
+    copy(&paths.cargo_toml, &paths.toml_backup).with_context(|| {
+        format!(
+            "Could not backup {:?} to {:?}",
+            &paths.cargo_toml, &paths.toml_backup
+        )
+    })?;
+
+    if paths.cargo_lock.exists() {
+        copy(&paths.cargo_lock, &paths.lock_backup).with_context(|| {
+            format!(
+                "Could not backup {:?} to {:?}",
+                &paths.cargo_lock, &paths.lock_backup
+            )
+        })?;
+    }
+
     Ok(())
 }
 
-fn get_cargo_and_backup_path(project_dir: &PathBuf) -> (PathBuf, PathBuf) {
-    let mut cargo_path = project_dir.clone();
-    cargo_path.push(CARGO_TOML);
-    let mut backup_path = project_dir.clone();
-    backup_path.push(ORIGINAL_CARGO_COPY);
-    (cargo_path, backup_path)
-}
-
-fn get_cargo_and_rauk_path(project_dir: &PathBuf) -> (PathBuf, PathBuf) {
-    let mut cargo_path = project_dir.clone();
-    cargo_path.push(CARGO_TOML);
-    let mut rauk_path = project_dir.clone();
-    rauk_path.push(RAUK_CARGO_TOML);
-    (cargo_path, rauk_path)
-}
-
-/// Restores the copy of the original Cargo.toml in the project directory.
+/// Restores copies of the original Cargo.toml and Cargo.lock files in the project directory.
 ///
 /// * `project_dir` - The path to the RTIC project
-pub fn restore_orignal_cargo_toml(project_dir: &PathBuf) -> Result<()> {
-    let (cargo_path, backup_path) = get_cargo_and_backup_path(project_dir);
-    copy(&backup_path, &cargo_path).with_context(|| {
+pub fn restore_orignal_cargo_files(project_dir: &PathBuf) -> Result<()> {
+    let paths = CargoPaths::new(project_dir);
+
+    copy(&paths.toml_backup, &paths.cargo_toml).with_context(|| {
         format!(
             "Could not restore backup from {:?} to {:?}",
-            backup_path, cargo_path
+            &paths.toml_backup, &paths.cargo_toml
         )
     })?;
+
+    if paths.cargo_lock.exists() && paths.lock_backup.exists() {
+        copy(&paths.lock_backup, &paths.cargo_lock).with_context(|| {
+            format!(
+                "Could not restore backup from {:?} to {:?}",
+                &paths.lock_backup, &paths.cargo_lock
+            )
+        })?;
+    }
+
     Ok(())
 }
 
@@ -75,8 +108,9 @@ pub fn update_custom_cargo_toml(project_dir: &PathBuf) -> Result<()> {
 ///
 /// * `project_dir` - The path to the RTIC project
 pub fn change_cargo_toml_to_custom(project_dir: &PathBuf) -> Result<()> {
-    let (cargo_path, rauk_path) = get_cargo_and_rauk_path(&project_dir);
-    copy(rauk_path, cargo_path).context("Could not swap Cargo.toml with custom one.")?;
+    let paths = CargoPaths::new(project_dir);
+    copy(&paths.rauk_cargo_toml, &paths.cargo_toml)
+        .context("Could not swap Cargo.toml with custom one.")?;
     Ok(())
 }
 
