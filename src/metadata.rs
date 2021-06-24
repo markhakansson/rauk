@@ -99,6 +99,7 @@ impl RaukMetadata {
         let info_path = get_metadata_path(&self.project_directory);
 
         if info_path.exists() {
+            info!("Loading metadata from previous execution");
             let data =
                 std::fs::read_to_string(&info_path).context("Failed to read RaukMetadata")?;
             let output_info: RaukMetadata = serde_json::from_str(&data).with_context(|| {

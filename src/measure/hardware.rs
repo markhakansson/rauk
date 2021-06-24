@@ -2,6 +2,7 @@ use super::breakpoints::{Breakpoint, OtherBreakpoint};
 use super::dwarf::{self, ObjectLocationMap, Subprogram, Subroutine};
 use super::klee::get_vcell_ktestobjects;
 use super::AppInfo;
+use crate::cli::MeasureInput;
 use crate::utils::core;
 use anyhow::{anyhow, Context, Result};
 use ktest_parser::{KTest, KTestObject};
@@ -28,20 +29,23 @@ enum LoopAction {
 /// * `ktests` - The generated test vectors
 /// * `app` - Relevant information of the replay binary
 pub(super) fn measure_replay_harness(
+    input: &MeasureInput,
     core: &mut Core,
     ktests: &Vec<KTest>,
     app: &AppInfo,
 ) -> Result<Vec<Vec<MeasurementResult>>> {
     let mut measurements: Vec<Vec<MeasurementResult>> = Vec::new();
+    let halt_timeout = input.halt_timeout.unwrap_or(DEFAULT_HALT_TIMEOUT_SECONDS);
 
     // Measure the replay harness using all generated test vectors
     for ktest in ktests {
         // Continue until reaching BKPT 255 (replaystart)
-        run_to_replay_start(core).context("Could not continue to the ReplayStart breakpoint")?;
+        run_to_replay_start(core, halt_timeout)
+            .context("Could not continue to the ReplayStart breakpoint")?;
         write_replay_objects(core, &app.variables, &ktest)
             .with_context(|| format!("Could not write to memory with KTest: {:?}", &ktest))?;
 
-        let bkpts = read_breakpoints(core, &ktest, app)?;
+        let bkpts = read_breakpoints(core, &ktest, app, halt_timeout)?;
         measurements.push(bkpts);
     }
 
@@ -50,9 +54,9 @@ pub(super) fn measure_replay_harness(
 
 /// Runs to where the replay harness starts. Also runs past any other breakpoints
 /// on the way, should there be any.
-fn run_to_replay_start(core: &mut Core) -> Result<()> {
+fn run_to_replay_start(core: &mut Core, timeout: u64) -> Result<()> {
     // Wait for core to halt on a breakpoint. If it doesn't something is wrong.
-    core.wait_for_core_halted(std::time::Duration::from_secs(DEFAULT_HALT_TIMEOUT_SECONDS))?;
+    core.wait_for_core_halted(std::time::Duration::from_secs(timeout))?;
     loop {
         let imm = core::read_breakpoint_value(core)?;
         // Ready to analyze when reaching this breakpoint
@@ -111,6 +115,7 @@ fn read_breakpoints(
     core: &mut Core,
     ktest: &KTest,
     app: &AppInfo,
+    timeout: u64,
 ) -> Result<Vec<MeasurementResult>> {
     let mut measurements: Vec<MeasurementResult> = Vec::new();
     let name = BKPT_UNKNOWN_NAME.to_string();
@@ -121,7 +126,7 @@ fn read_breakpoints(
     // Loop from breakpoints until the next
     loop {
         core::run(core).context("Could not continue from the ReplayStart breakpoint")?;
-        core.wait_for_core_halted(std::time::Duration::from_secs(DEFAULT_HALT_TIMEOUT_SECONDS))
+        core.wait_for_core_halted(std::time::Duration::from_secs(timeout))
             .context(
                 "Core does not halt. Your application might be stuck in a non-terminating loop?",
             )?;

@@ -102,7 +102,7 @@ pub fn wcet_measurement(
     };
     let mut core = session.core(0)?;
 
-    let measurements = hardware::measure_replay_harness(&mut core, &ktests, &app)
+    let measurements = hardware::measure_replay_harness(input, &mut core, &ktests, &app)
         .context("Could not complete the measurement of the replay harness")?;
 
     let traces = post_measurement_analysis(measurements)

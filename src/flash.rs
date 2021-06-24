@@ -7,7 +7,7 @@ use probe_rs::flashing::{download_file, Format};
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
 
-const HALT_TIMEOUT_SECONDS: u64 = 5;
+const DEFAULT_HALT_TIMEOUT_SECONDS: u64 = 5;
 
 /// Builds the replay harness and flashes it to the target hardware.
 /// Returns the path to the built executable.
@@ -23,6 +23,9 @@ pub fn flash_to_target(
 
     let mut updated_input = input.clone();
     updated_input.get_missing_input(settings);
+    let halt_timeout = updated_input
+        .halt_timeout
+        .unwrap_or(DEFAULT_HALT_TIMEOUT_SECONDS);
 
     build_replay_harness(&updated_input, &mut cargo_path, &mut target_dir)
         .context("Failed to build the replay harness")?;
@@ -40,7 +43,7 @@ pub fn flash_to_target(
 
     // Reset the core and halt
     let mut core = session.core(0)?;
-    core.reset_and_halt(std::time::Duration::from_secs(HALT_TIMEOUT_SECONDS))?;
+    core.reset_and_halt(std::time::Duration::from_secs(halt_timeout))?;
 
     Ok(target_dir)
 }
