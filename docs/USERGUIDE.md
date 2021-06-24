@@ -259,3 +259,16 @@ kcachegrind target/rauk/klee-last/run.istats
 The `run.istats` file contains statistics/profiling of the KLEE runtime.
 
 ## 6. Settings
+If you frequently use the same flags such as chip type for all commands you can set them in a settings file which rauk will look for during execution. Any set flags have precedence over the settings. 
+
+First add a `rauk.toml` file in your project directory (same location as your `Cargo.toml` file). The following settings are currently supported:
+```toml
+#inside rauk.toml
+[general]
+no-patch = true #disable autopatch feature
+chip = "STM32F401RETx" #which chip type to use
+target = "thumbv7em-none-eabi" #which target toolchain the chip is
+halt-timeout = 20 #how many seconds to wait for the core to halt when measuring before panicking
+
+
+```
