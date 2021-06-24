@@ -45,7 +45,7 @@ fn main() -> Result<()> {
         // Patch the project's Cargo.toml
         if !opts.no_patch {
             cargo::backup_original_cargo_files(&project_dir)?;
-            info!("User Cargo.toml backed up");
+            info!("User Cargo files backed up");
             cargo::update_custom_cargo_toml(&project_dir)?;
             cargo::change_cargo_toml_to_custom(&project_dir)?;
             info!("Custom Cargo.toml patched");
@@ -77,17 +77,20 @@ fn match_cli_opts(
 
     match &opts.cmd {
         Command::Generate(g) => {
+            info!("Executing generate command");
             let path = generate::generate_klee_tests(g, &metadata)
                 .context("Failed to execute generate command")?;
             let _ = symlink(&path, &metadata.rauk_output_directory.join("klee-last"));
             metadata.update_output(&g.build, Some(path), &opts.cmd)?;
         }
         Command::Flash(f) => {
+            info!("Executing flash command");
             let path = flash::flash_to_target(f, &settings, &metadata)
                 .context("Failed to execute flash command")?;
             metadata.update_output(&f.build, Some(path), &opts.cmd)?;
         }
         Command::Measure(a) => {
+            info!("Executing measure command");
             let path = measure::wcet_measurement(a, &settings, &metadata)
                 .context("Failed to execute analyze command")?;
             metadata.update_output(&a.build, path, &opts.cmd)?;
@@ -103,7 +106,7 @@ fn post_execution_cleanup(project_dir: &PathBuf, no_patch: bool) -> Result<()> {
     // Restore original Cargo.toml
     if !no_patch {
         cargo::restore_orignal_cargo_files(&project_dir)?;
-        info!("User Cargo.toml restored");
+        info!("User Cargo files restored");
     }
 
     Ok(())

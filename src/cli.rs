@@ -101,6 +101,9 @@ pub struct FlashInput {
     /// The name of the chip to flash to.
     #[structopt(short, long)]
     pub chip: Option<String>,
+    /// How many seconds to wait for core to halt before panicking. Default 10s.
+    #[structopt(short, long)]
+    pub halt_timeout: Option<u64>,
 }
 
 impl FlashInput {
@@ -123,6 +126,9 @@ pub struct MeasureInput {
     /// The name of the chip to flash to.
     #[structopt(short, long)]
     pub chip: Option<String>,
+    /// How many seconds to wait for core to halt before panicking. Default 10s.
+    #[structopt(short, long)]
+    pub halt_timeout: Option<u64>,
 }
 
 impl MeasureInput {

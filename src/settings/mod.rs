@@ -17,6 +17,8 @@ pub struct General {
     pub chip: Option<String>,
     #[serde(default)]
     pub target: Option<String>,
+    #[serde(default)]
+    pub halt_timeout: Option<u64>,
 }
 
 /// Rauk settings file that can be used instead of command input
@@ -44,6 +46,9 @@ impl FlashInput {
             if self.chip.is_none() {
                 self.chip = general.chip.clone();
             }
+            if self.halt_timeout.is_none() {
+                self.halt_timeout = general.halt_timeout.clone();
+            }
         }
     }
 }
@@ -55,6 +60,9 @@ impl MeasureInput {
         if let Some(general) = &settings.general {
             if self.chip.is_none() {
                 self.chip = general.chip.clone();
+            }
+            if self.halt_timeout.is_none() {
+                self.halt_timeout = general.halt_timeout.clone();
             }
         }
     }
@@ -82,8 +90,10 @@ fn load_settings_from_dir(project_dir: &PathBuf) -> Result<RaukSettings> {
 /// settings struct.
 pub fn load_settings(project_dir: &PathBuf) -> Result<RaukSettings> {
     let settings = if settings_file_exists(&project_dir) {
+        info!("Loading user settings from file");
         load_settings_from_dir(&project_dir)?
     } else {
+        info!("No user settings file found");
         RaukSettings::new()
     };
 
