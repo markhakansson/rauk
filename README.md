@@ -130,5 +130,3 @@ Licensed under either of
 * MIT license ([LICENSE-MIT](/LICENSE-MIT))
 
 at your option.
-
-Copyright 2021 Mark Hakansson
