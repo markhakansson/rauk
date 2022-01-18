@@ -56,7 +56,7 @@ fn build_replay_harness(
     target_dir: &mut PathBuf,
 ) -> Result<ExitStatus, std::io::Error> {
     let mut cargo = Command::new("cargo");
-    cargo.arg("build");
+    cargo.arg("rustc");
 
     if input.target.is_some() {
         let target = input.target.clone().unwrap();
@@ -88,7 +88,9 @@ fn build_replay_harness(
 
     cargo
         .args(&["--features", "klee-replay"])
-        .args(&["--manifest-path", cargo_path.to_str().unwrap()]);
+        .args(&["--manifest-path", cargo_path.to_str().unwrap()])
+        .arg("--")
+        .args(&["-C", "linker-plugin-lto"]);
 
     cargo.status()
 }
